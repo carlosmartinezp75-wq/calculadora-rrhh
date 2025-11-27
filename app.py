@@ -4,39 +4,41 @@ import requests
 import base64
 import os
 import io
-import plotly.express as px
-import plotly.graph_objects as go
 import random
 from datetime import datetime, date
+import plotly.graph_objects as go
+import plotly.express as px
 
-# --- 0. VALIDACIÓN DE LIBRERÍAS ---
+# --- 0. VALIDACIÓN LIBRERÍAS ---
 try:
     import pdfplumber
+    from fpdf import FPDF
     from docx import Document
-    from docx.shared import Pt, Inches, RGBColor
+    from docx.shared import Pt, RGBColor
     from docx.enum.text import WD_ALIGN_PARAGRAPH
     LIBRARIES_OK = True
 except ImportError:
     LIBRARIES_OK = False
 
 # --- 1. CONFIGURACIÓN ---
-st.set_page_config(page_title="HR Suite Enterprise V27", page_icon="🏢", layout="wide")
+st.set_page_config(page_title="HR Suite Ultimate V28", page_icon="💎", layout="wide")
 
-# Inicialización de Estado (Persistencia de Datos)
+# Inicialización de Estado
 if 'empresa' not in st.session_state:
     st.session_state.empresa = {
         "nombre": "", "rut": "", "direccion": "", 
-        "rep_nombre": "", "rep_rut": "", "ciudad": "Santiago", "giro": "Servicios"
+        "rep_nombre": "", "rep_rut": "", "ciudad": "Santiago", "giro": "Servicios Generales"
     }
 if 'calculo_actual' not in st.session_state: st.session_state.calculo_actual = None
 if 'cargo_actual' not in st.session_state: st.session_state.cargo_actual = ""
 if 'rubro_actual' not in st.session_state: st.session_state.rubro_actual = ""
-if 'candidato_detectado' not in st.session_state: st.session_state.candidato_detectado = ""
+if 'brechas_detectadas' not in st.session_state: st.session_state.brechas_detectadas = []
 
 # --- 2. ESTILOS VISUALES ---
 def cargar_estilos():
     nombres = ['fondo.png', 'fondo.jpg', 'fondo_marca.png']
     img = next((n for n in nombres if os.path.exists(n)), None)
+    
     css_fondo = ""
     if img:
         try:
@@ -44,7 +46,7 @@ def cargar_estilos():
             css_fondo = f"""[data-testid="stAppViewContainer"] {{background-image: url("data:image/png;base64,{b64}"); background-size: cover;}}"""
         except: pass
     else:
-        css_fondo = """[data-testid="stAppViewContainer"] {background: linear-gradient(135deg, #fdfbfb 0%, #ebedee 100%);}"""
+        css_fondo = """[data-testid="stAppViewContainer"] {background: linear-gradient(135deg, #f5f7fa 0%, #c3cfe2 100%);}"""
 
     st.markdown(f"""
         <style>
@@ -53,9 +55,13 @@ def cargar_estilos():
         h1, h2, h3 {{color: #004a99 !important; font-family: 'Segoe UI', sans-serif; font-weight: 800;}}
         .stButton>button {{background-color: #004a99 !important; color: white !important; font-weight: bold; border-radius: 8px; width: 100%; height: 3rem;}}
         .stButton>button:hover {{background-color: #003366 !important;}}
-        .liq-container {{border: 1px solid #999; padding: 20px; background: #fff; font-family: 'Courier New', monospace;}}
-        .liq-row {{display: flex; justify-content: space-between; border-bottom: 1px dotted #ccc; padding: 4px 0;}}
-        .liq-total {{font-weight: bold; font-size: 1.2em; background-color: #e3f2fd; padding: 10px; margin-top: 15px; border: 2px solid #004a99;}}
+        .miles-feedback {{font-size: 0.8rem; color: #28a745; font-weight: bold; margin-top: -10px;}}
+        
+        /* Estilo Liquidación HTML */
+        .liq-box {{border: 1px solid #ccc; padding: 20px; font-family: 'Courier New'; background: #fff;}}
+        .liq-title {{text-align: center; font-weight: bold; border-bottom: 2px solid #000; margin-bottom: 10px;}}
+        .liq-item {{display: flex; justify-content: space-between; border-bottom: 1px dashed #ddd; padding: 3px 0;}}
+        .liq-total {{background: #e3f2fd; padding: 10px; font-weight: bold; font-size: 1.2em; border: 1px solid #004a99; margin-top: 10px;}}
         </style>
         """, unsafe_allow_html=True)
 
@@ -64,7 +70,7 @@ cargar_estilos()
 # --- 3. FUNCIONES UTILITARIAS ---
 def fmt(valor): return "$0" if pd.isna(valor) else "${:,.0f}".format(valor).replace(",", ".")
 def mostrar_miles(valor): 
-    if valor > 0: st.markdown(f'<p style="color:green; font-size:0.8rem; margin-top:-15px;">Ingresaste: <b>{fmt(valor)}</b></p>', unsafe_allow_html=True)
+    if valor > 0: st.markdown(f'<p class="miles-feedback">Ingresaste: {fmt(valor)}</p>', unsafe_allow_html=True)
 
 def obtener_indicadores():
     try:
@@ -73,37 +79,148 @@ def obtener_indicadores():
         return float(d['uf']['valor']), float(d['utm']['valor'])
     except: return 39643.59, 69542.0
 
-# --- 4. MOTORES INTEELIGENTES ---
+# --- 4. GENERADORES DE DOCUMENTOS ---
+
+# A. GENERAR PDF LIQUIDACIÓN (NUEVO)
+def generar_pdf_liquidacion(res, nombre="Trabajador", cargo="No Definido"):
+    pdf = FPDF()
+    pdf.add_page()
+    pdf.set_font("Arial", 'B', 14)
+    pdf.cell(0, 10, "LIQUIDACION DE SUELDO (SIMULACION)", 0, 1, 'C')
+    pdf.ln(5)
+    
+    pdf.set_font("Arial", '', 10)
+    pdf.cell(0, 6, f"Nombre: {nombre}", 0, 1)
+    pdf.cell(0, 6, f"Cargo: {cargo}", 0, 1)
+    pdf.cell(0, 6, f"Fecha: {datetime.now().strftime('%d/%m/%Y')}", 0, 1)
+    
+    pdf.ln(5)
+    pdf.set_font("Arial", 'B', 10)
+    pdf.cell(95, 8, "HABERES", 1, 0, 'C')
+    pdf.cell(95, 8, "DESCUENTOS", 1, 1, 'C')
+    
+    pdf.set_font("Arial", '', 9)
+    # Fila 1
+    pdf.cell(60, 6, "Sueldo Base", 'L', 0)
+    pdf.cell(35, 6, fmt(res['Sueldo Base']), 'R', 0)
+    pdf.cell(60, 6, "AFP", 'L', 0)
+    pdf.cell(35, 6, fmt(res['AFP']), 'R', 1)
+    
+    # Fila 2
+    pdf.cell(60, 6, "Gratificacion Legal", 'L', 0)
+    pdf.cell(35, 6, fmt(res['Gratificación']), 'R', 0)
+    pdf.cell(60, 6, "Salud", 'L', 0)
+    pdf.cell(35, 6, fmt(res['Salud']), 'R', 1)
+    
+    # Fila 3
+    pdf.cell(60, 6, "Colacion/Movil.", 'L', 0)
+    pdf.cell(35, 6, fmt(res['No Imponibles']), 'R', 0)
+    pdf.cell(60, 6, "Seguro Cesantia", 'L', 0)
+    pdf.cell(35, 6, fmt(res['AFC']), 'R', 1)
+    
+    # Fila 4
+    pdf.cell(60, 6, "", 'L', 0)
+    pdf.cell(35, 6, "", 'R', 0)
+    pdf.cell(60, 6, "Impuesto Unico", 'L', 0)
+    pdf.cell(35, 6, fmt(res['Impuesto']), 'R', 1)
+    
+    pdf.ln(5)
+    pdf.set_font("Arial", 'B', 12)
+    pdf.cell(130, 10, "TOTAL LIQUIDO A PAGAR:", 1, 0, 'R')
+    pdf.cell(60, 10, fmt(res['LÍQUIDO']), 1, 1, 'C')
+    
+    return pdf.output(dest='S').encode('latin-1')
+
+# B. GENERAR CONTRATO WORD (CORREGIDO GIRO Y FECHA)
+def generar_contrato_word(fin, form):
+    doc = Document()
+    style = doc.styles['Normal']
+    style.font.name = 'Arial'
+    style.font.size = Pt(11)
+    
+    t = doc.add_heading('CONTRATO DE TRABAJO', 0)
+    t.alignment = WD_ALIGN_PARAGRAPH.CENTER
+    doc.add_paragraph("")
+    
+    fecha_hoy = datetime.now().strftime("%d de %B de %Y")
+    giro_empresa = form.get('giro', 'Servicios Profesionales') # Fallback para evitar KeyError
+    
+    intro = f"""En {form['ciudad']}, a {fecha_hoy}, entre "{form['nombre'].upper()}", RUT {form['rut']}, giro {giro_empresa}, representada por {form['rep_nombre'].upper()}, RUT {form['rep_rut']}, ambos domiciliados en {form['direccion']}, en adelante "EMPLEADOR"; y {form['trab_nombre'].upper()}, RUT {form['trab_rut']}, nacionalidad {form['trab_nacionalidad']}, nacido el {str(form['trab_nacimiento'])}, domiciliado en {form['trab_dir']}, en adelante "TRABAJADOR", se conviene:"""
+    
+    p = doc.add_paragraph(intro)
+    p.alignment = WD_ALIGN_PARAGRAPH.JUSTIFY
+    
+    clausulas = [
+        ("PRIMERO:", f"El Trabajador se desempeñará como {form['cargo'].upper()}, ejecutando funciones de {form['funciones']}."),
+        ("SEGUNDO:", f"Sueldo Base: {fmt(fin['Sueldo Base'])}. Gratificación: {fmt(fin['Gratificación'])} (Tope 4.75 IMM). Asignaciones: {fmt(fin['No Imponibles'])}."),
+        ("TERCERO:", "Jornada ordinaria de 44 horas semanales, distribuidas de lunes a viernes."),
+        ("CUARTO:", f"Contrato {form['tipo_contrato']} con inicio el {str(form['fecha_inicio'])}."),
+        ("QUINTO:", "Se prohíbe la divulgación de información confidencial de la empresa."),
+        ("SEXTO:", "La propiedad intelectual de lo desarrollado pertenece al Empleador.")
+    ]
+    
+    for tit, txt in clausulas:
+        p = doc.add_paragraph(); run = p.add_run(tit); run.bold = True; p.add_run(f" {txt}")
+    
+    bio = io.BytesIO()
+    doc.save(bio)
+    return bio
+
+# --- 5. MOTORES INTELIGENTES ---
 
 def generar_perfil_robusto(cargo, rubro):
     if not cargo: return None
+    # Base de datos simulada de competencias por rubro
+    skills_map = {
+        "Tecnología": ["Python/SQL", "Cloud Computing", "Agile/Scrum", "DevOps"],
+        "Minería": ["Norma ISO 9001", "Seguridad Sernageomin", "Mantenimiento Preventivo", "Gestión de Turnos"],
+        "Retail": ["Visual Merchandising", "Control de Inventario", "Atención al Cliente", "KPIs de Venta"],
+        "Salud": ["Protocolos Minsal", "Atención Clínica", "Gestión de Pacientes", "Bioseguridad"]
+    }
+    hard_skills = skills_map.get(rubro, ["Gestión de Proyectos", "Excel Avanzado", "ERP", "Inglés Técnico"])
+    
     return {
         "titulo": cargo.title(),
-        "mision": f"Gestionar estratégicamente el área de {cargo} en el rubro {rubro}.",
-        "funciones": ["Control de Gestión.", "Liderazgo de Equipos.", "Reportabilidad.", "Mejora Continua."],
-        "requisitos": ["Título Profesional.", f"Experiencia en {rubro}.", "Manejo de ERP.", "Inglés Técnico."],
-        "competencias": ["Liderazgo", "Negociación", "Visión Estratégica", "Resiliencia"]
+        "mision": f"Garantizar la operatividad y eficiencia del área de {cargo} en el sector {rubro}, alineado con los objetivos estratégicos.",
+        "funciones": [
+            "Planificación estratégica y control presupuestario.",
+            "Liderazgo y desarrollo de equipos de alto rendimiento.",
+            "Optimización continua de procesos operativos.",
+            "Reportabilidad directa a Gerencia."
+        ],
+        "requisitos_duros": hard_skills,
+        "competencias": ["Liderazgo Situacional", "Comunicación Efectiva", "Resolución de Problemas", "Adaptabilidad"],
+        "kpis": ["Cumplimiento Presupuestario", "Satisfacción Cliente Interno", "Tasa de Error/Falla"]
     }
 
-def motor_analisis(texto_cv, cargo, rubro):
-    # Intentar extraer nombre (Heurística simple: Primeras líneas)
-    lineas = texto_cv.split('\n')
-    posible_nombre = ""
-    for l in lineas[:5]:
-        if len(l.strip()) > 5 and len(l.strip()) < 50:
-            posible_nombre = l.strip().title()
-            break
+def motor_analisis(texto_cv, cargo, rubro, perfil):
+    # Análisis de Coincidencias
+    texto_lower = texto_cv.lower()
     
-    st.session_state.candidato_detectado = posible_nombre # Guardar nombre para contrato
-
-    kws = ["gestión", "equipo", "liderazgo", "estrategia", "inglés", "excel", "presupuesto", "proyectos"]
-    txt_lower = texto_cv.lower()
-    enc = [k.title() for k in kws if k in txt_lower]
-    fal = [k.title() for k in kws if k not in txt_lower]
-    score = int((len(enc)/len(kws))*100) + 15
-    score = min(99, max(10, score))
-    nivel = "Senior" if score > 70 else "Junior"
-    return score, enc, fal, nivel
+    # Skills del perfil
+    target_skills = [s.lower() for s in perfil['requisitos_duros'] + perfil['competencias']]
+    
+    encontradas = []
+    brechas = []
+    
+    for skill in target_skills:
+        # Búsqueda laxa (palabras clave dentro de la skill)
+        palabras = skill.split()
+        match = False
+        for p in palabras:
+            if len(p) > 3 and p in texto_lower:
+                match = True
+                break
+        
+        if match: encontradas.append(skill.title())
+        else: brechas.append(skill.title())
+    
+    score = int((len(encontradas) / len(target_skills)) * 100)
+    score = min(99, max(10, score + 15)) # Ajuste base
+    
+    st.session_state.brechas_detectadas = brechas # Guardar para Plan Carrera
+    
+    return score, encontradas, brechas
 
 def leer_pdf(archivo):
     if not LIBRARIES_OK: return None
@@ -114,7 +231,7 @@ def leer_pdf(archivo):
         return text
     except: return None
 
-# --- 5. CÁLCULO SUELDO ---
+# --- 6. CÁLCULO FINANCIERO ---
 def calcular_reverso(liquido, col, mov, contrato, afp_n, salud_t, plan, uf, utm, s_min, t_imp, t_afc):
     no_imp = col + mov
     liq_meta = liquido - no_imp
@@ -124,6 +241,7 @@ def calcular_reverso(liquido, col, mov, contrato, afp_n, salud_t, plan, uf, utm,
     tasa_afp = 0.0 if (contrato == "Sueldo Empresarial" or afp_n == "SIN AFP") else (0.10 + ({"Capital":1.44,"Habitat":1.27,"Modelo":0.58,"Uno":0.49}.get(afp_n,1.44)/100))
     tasa_afc_emp = 0.024
     tasa_afc_trab = 0.006 if contrato == "Indefinido" and contrato != "Sueldo Empresarial" else 0.0
+    if contrato == "Plazo Fijo": tasa_afc_emp = 0.03
     
     min_b, max_b = 100000, liq_meta * 2.5
     for _ in range(150):
@@ -154,97 +272,28 @@ def calcular_reverso(liquido, col, mov, contrato, afp_n, salud_t, plan, uf, utm,
         else: max_b = base
     return None
 
-# --- 6. GENERADOR DE CONTRATOS ROBUSTO (AGENTE LEGAL) ---
-def generar_contrato_legal_word(fin, form):
-    doc = Document()
-    style = doc.styles['Normal']
-    style.font.name = 'Arial'
-    style.font.size = Pt(11)
-    
-    t = doc.add_heading('CONTRATO DE TRABAJO', 0)
-    t.alignment = WD_ALIGN_PARAGRAPH.CENTER
-    doc.add_paragraph("")
-    
-    fecha_hoy = datetime.now().strftime("%d de %B de %Y")
-    
-    # USO SEGURO DE .get() PARA EVITAR KEYERROR
-    empresa_giro = form.get('empresa_giro', 'Servicios')
-    
-    intro = f"""En {form['ciudad']}, a {fecha_hoy}, entre "{form['empresa_nombre'].upper()}", RUT {form['empresa_rut']}, giro {empresa_giro}, representada legalmente por don/ña {form['rep_nombre'].upper()}, cédula de identidad N° {form['rep_rut']}, ambos domiciliados en {form['empresa_dir']}, en adelante el "EMPLEADOR"; y don/ña {form['trab_nombre'].upper()}, cédula de identidad N° {form['trab_rut']}, de nacionalidad {form['trab_nacionalidad']}, nacido el {str(form['trab_nacimiento'])}, domiciliado en {form['trab_dir']}, en adelante el "TRABAJADOR", se ha convenido el siguiente contrato de trabajo:"""
-    
-    p = doc.add_paragraph(intro)
-    p.alignment = WD_ALIGN_PARAGRAPH.JUSTIFY
-    
-    # CLÁUSULAS ROBUSTAS (DEL AGENTE LEGAL)
-    clausulas = [
-        ("PRIMERO (Naturaleza de los Servicios):", f"El Trabajador se compromete a desempeñar el cargo de {form['cargo'].upper()}, realizando las funciones de {form['funciones']} y otras tareas inherentes a su cargo."),
-        
-        ("SEGUNDO (Lugar de Trabajo):", f"Los servicios se prestarán en las dependencias de la empresa ubicadas en {form['empresa_dir']}, sin perjuicio de los desplazamientos que requiera el cargo."),
-        
-        ("TERCERO (Jornada):", "El trabajador cumplirá una jornada ordinaria de 44 horas semanales (ajustable a Ley 40 Horas), distribuida de lunes a viernes. El Empleador podrá alterar la distribución de la jornada según necesidades operativas."),
-        
-        ("CUARTO (Remuneración):", f"El Empleador pagará al Trabajador una remuneración mensual compuesta por:\n"
-                                   f"a) Sueldo Base: {fmt(fin['Sueldo Base'])}\n"
-                                   f"b) Gratificación Legal: {fmt(fin['Gratificación'])} (Con tope legal de 4.75 IMM anual)\n"
-                                   f"c) Asig. Colación: {fmt(form['colacion'])}\n"
-                                   f"d) Asig. Movilización: {fmt(form['movilizacion'])}\n\n"
-                                   f"Las partes acuerdan que la remuneración líquida mensual aproximada será de {fmt(fin['LÍQUIDO'])}."),
-        
-        ("QUINTO (Descuentos):", "El Empleador deducirá de las remuneraciones los impuestos, cotizaciones previsionales y de seguridad social obligatorias."),
-        
-        ("SEXTO (Confidencialidad):", "El Trabajador se obliga a mantener estricta reserva respecto de la información confidencial de la Empresa, clientes y proveedores, prohibiéndose su divulgación a terceros durante y después de la vigencia del contrato."),
-        
-        ("SÉPTIMO (Propiedad Intelectual):", "Toda invención, mejora o creación desarrollada por el Trabajador durante la vigencia del contrato será propiedad exclusiva del Empleador."),
-        
-        ("OCTAVO (Vigencia):", f"El presente contrato es de carácter {form['tipo_contrato']} y comenzará a regir a partir del {str(form['fecha_inicio'])}.")
-    ]
-    
-    for titulo, texto in clausulas:
-        p = doc.add_paragraph()
-        run = p.add_run(titulo)
-        run.bold = True
-        run.font.color.rgb = RGBColor(0, 0, 0)
-        p.add_run(f" {texto}")
-        p.alignment = WD_ALIGN_PARAGRAPH.JUSTIFY
-        doc.add_paragraph("")
-    
-    doc.add_paragraph("\n\n\n")
-    table = doc.add_table(rows=1, cols=2)
-    table.alignment = WD_ALIGN_PARAGRAPH.CENTER
-    c1 = table.cell(0, 0)
-    c1.text = "___________________________\np.p EMPLEADOR\nRUT: " + form['empresa_rut']
-    c1.paragraphs[0].alignment = WD_ALIGN_PARAGRAPH.CENTER
-    
-    c2 = table.cell(0, 1)
-    c2.text = "___________________________\nTRABAJADOR\nRUT: " + form['trab_rut']
-    c2.paragraphs[0].alignment = WD_ALIGN_PARAGRAPH.CENTER
-    
-    bio = io.BytesIO()
-    doc.save(bio)
-    return bio
-
-# --- 7. INTERFAZ GRÁFICA ---
+# --- 7. INTERFAZ ---
 
 with st.sidebar:
     st.image("https://www.previred.com/wp-content/uploads/2021/01/logo-previred.png", width=120)
     
-    with st.expander("🏢 DATOS EMPRESA (Persistentes)", expanded=True):
+    with st.expander("🏢 Datos Empresa (Obligatorio)", expanded=True):
         st.session_state.empresa['nombre'] = st.text_input("Razón Social", st.session_state.empresa['nombre'])
         st.session_state.empresa['rut'] = st.text_input("RUT Empresa", st.session_state.empresa['rut'])
-        st.session_state.empresa['giro'] = st.text_input("Giro Comercial", st.session_state.empresa.get('giro', 'Servicios')) # Default para evitar error
+        st.session_state.empresa['giro'] = st.text_input("Giro", st.session_state.empresa['giro'])
         st.session_state.empresa['direccion'] = st.text_input("Dirección", st.session_state.empresa['direccion'])
-        st.session_state.empresa['ciudad'] = st.text_input("Ciudad Firma", st.session_state.empresa['ciudad'])
         st.session_state.empresa['rep_nombre'] = st.text_input("Rep. Legal", st.session_state.empresa['rep_nombre'])
         st.session_state.empresa['rep_rut'] = st.text_input("RUT Rep.", st.session_state.empresa['rep_rut'])
-        if st.button("💾 Guardar Configuración"): st.success("Guardado.")
+        st.session_state.empresa['ciudad'] = st.text_input("Ciudad", st.session_state.empresa['ciudad'])
+        if st.button("💾 Guardar Datos"): st.success("Guardado")
 
     st.divider()
     uf_v, utm_v = obtener_indicadores()
-    st.metric("UF Hoy", fmt(uf_v).replace("$",""))
-    st.metric("UTM Hoy", fmt(utm_v))
+    st.metric("UF", fmt(uf_v).replace("$",""))
+    st.metric("UTM", fmt(utm_v))
 
-st.title("HR Suite Enterprise V27")
-st.markdown("**Plataforma Integral de Gestión de Personas y Contratos**")
+st.title("HR Suite Enterprise V28")
+st.markdown("**Sistema Integral de Gestión de Personas**")
 
 tabs = st.tabs(["💰 Calculadora", "📋 Perfil Cargo", "🧠 Análisis CV", "🚀 Carrera", "📝 Contratos", "📊 Indicadores"])
 
@@ -272,119 +321,104 @@ with tabs[0]:
             k3.metric("Costo Empresa", fmt(res['COSTO TOTAL']), delta="Total", delta_color="inverse")
             
             st.markdown(f"""
-            <div class="liq-container">
-                <div class="liq-row"><span>Sueldo Base:</span><span>{fmt(res['Sueldo Base'])}</span></div>
-                <div class="liq-row"><span>Gratificación:</span><span>{fmt(res['Gratificación'])}</span></div>
-                <div class="liq-row" style="background:#eee;"><span><b>TOTAL IMPONIBLE:</b></span><span><b>{fmt(res['Total Imponible'])}</b></span></div>
-                <div class="liq-row"><span>No Imponibles:</span><span>{fmt(res['No Imponibles'])}</span></div>
-                <div class="liq-row"><span>AFP:</span><span style="color:#d9534f;">-{fmt(res['AFP'])}</span></div>
-                <div class="liq-row"><span>Salud:</span><span style="color:#d9534f;">-{fmt(res['Salud'])}</span></div>
-                <div class="liq-row"><span>Cesantía:</span><span style="color:#d9534f;">-{fmt(res['AFC'])}</span></div>
-                <div class="liq-row"><span>Impuesto:</span><span style="color:#d9534f;">-{fmt(res['Impuesto'])}</span></div>
-                <div class="liq-total" style="display:flex; justify-content:space-between;">
-                    <span>LÍQUIDO A PAGAR:</span><span>{fmt(res['LÍQUIDO'])}</span>
-                </div>
+            <div class="liq-box">
+                <div class="liq-title">LIQUIDACIÓN DE SUELDO</div>
+                <div class="liq-item"><span>Sueldo Base:</span><span>{fmt(res['Sueldo Base'])}</span></div>
+                <div class="liq-item"><span>Gratificación:</span><span>{fmt(res['Gratificación'])}</span></div>
+                <div class="liq-item" style="font-weight:bold; background:#f0f0f0;"><span>TOTAL IMPONIBLE:</span><span>{fmt(res['Total Imponible'])}</span></div>
+                <div class="liq-item"><span>No Imponibles:</span><span>{fmt(res['No Imponibles'])}</span></div>
+                <br>
+                <div class="liq-item"><span>AFP ({afp}):</span><span style="color:red">-{fmt(res['AFP'])}</span></div>
+                <div class="liq-item"><span>Salud ({sal}):</span><span style="color:red">-{fmt(res['Salud'])}</span></div>
+                <div class="liq-item"><span>Impuesto Único:</span><span style="color:red">-{fmt(res['Impuesto'])}</span></div>
+                <div class="liq-total">LÍQUIDO A PAGAR: {fmt(res['LÍQUIDO'])}</div>
             </div>
             """, unsafe_allow_html=True)
+            
+            # BOTÓN PDF LIQUIDACIÓN
+            if LIBRARIES_OK:
+                pdf_bytes = generar_pdf_liquidacion(res)
+                st.download_button("⬇️ Descargar Liquidación (PDF)", pdf_bytes, "liquidacion.pdf", "application/pdf")
         else: st.error("Error matemático.")
 
-# TAB 2: PERFIL (CORREGIDO KEYERROR)
+# TAB 2: PERFIL
 with tabs[1]:
-    col1, col2 = st.columns(2)
-    cargo = col1.text_input("Cargo", placeholder="Ej: Jefe de Ventas")
-    rubros = ["Minería", "Tecnología", "Retail", "Banca", "Salud", "Construcción", "Agro", "Transporte", "Educación", "Servicios"]
-    rubro = col2.selectbox("Rubro", rubros)
+    c1, c2 = st.columns(2)
+    cargo = c1.text_input("Cargo", placeholder="Ej: Analista de Finanzas")
+    rubro = c2.selectbox("Rubro", ["Tecnología", "Minería", "Retail", "Banca", "Salud", "Servicios"])
     
     if cargo:
         st.session_state.cargo_actual = cargo
         st.session_state.rubro_actual = rubro
         perf = generar_perfil_robusto(cargo, rubro)
+        st.session_state.perfil_generado = perf
         
         st.info(f"**Misión:** {perf['mision']}")
         c1, c2 = st.columns(2)
-        c1.success("**Funciones:**\n" + "\n".join([f"- {x}" for x in perf['funciones']]))
-        c2.warning("**Requisitos:**\n" + "\n".join([f"- {x}" for x in perf['requisitos']]))
-        st.markdown("**Competencias:** " + ", ".join(perf['competencias']))
+        c1.success("**Requisitos Técnicos:**\n" + "\n".join([f"- {x}" for x in perf['requisitos_duros']]))
+        c2.warning("**Competencias:**\n" + "\n".join([f"- {x}" for x in perf['competencias']]))
+        st.markdown("**KPIs:** " + ", ".join(perf['kpis']))
 
-# TAB 3: ANÁLISIS CV (AUTO-FILL)
+# TAB 3: ANÁLISIS CV
 with tabs[2]:
-    st.header("Análisis Inteligente")
-    if not LIBRARIES_OK: st.warning("⚠️ Instalar librerías.")
+    st.header("Análisis de Brechas")
+    if not LIBRARIES_OK: st.warning("Faltan librerías PDF.")
     else:
         uploaded = st.file_uploader("Subir CV (PDF)", type="pdf")
-        if uploaded and st.session_state.cargo_actual:
-            if st.button("ANALIZAR CANDIDATO"):
+        if uploaded and st.session_state.perfil_generado:
+            if st.button("ANALIZAR"):
                 txt = leer_pdf(uploaded)
                 if txt:
-                    score, enc, fal, nivel = motor_analisis(txt, st.session_state.cargo_actual, st.session_state.rubro_actual)
+                    score, enc, fal = motor_analisis(txt, cargo, rubro, st.session_state.perfil_generado)
                     c1, c2 = st.columns([1,2])
                     c1.metric("Match Score", f"{score}%")
-                    c1.info(f"Nivel: **{nivel}**")
+                    c1.plotly_chart(go.Figure(go.Indicator(mode="gauge+number", value=score, gauge={'axis':{'range':[0,100]}, 'bar':{'color':"#004a99"}})), use_container_width=True)
                     c2.success(f"✅ Fortalezas: {', '.join(enc)}")
-                    c2.error(f"⚠️ Brechas: {', '.join(fal)}")
-                    
-                    if st.session_state.candidato_detectado:
-                        st.caption(f"Candidato detectado: {st.session_state.candidato_detectado}")
+                    c2.error(f"⚠️ Brechas Críticas: {', '.join(fal)}")
+        elif not st.session_state.perfil_generado:
+            st.warning("Genere un perfil en la Pestaña 2 primero.")
 
 # TAB 4: CARRERA
 with tabs[3]:
-    st.header("Plan de Desarrollo")
-    if st.session_state.cargo_actual:
-        st.write("Plan de desarrollo generado para el perfil seleccionado...")
-        c1, c2, c3 = st.columns(3)
-        c1.markdown("#### Corto Plazo"); c1.write("- Inducción\n- Certificación inicial")
-        c2.markdown("#### Mediano Plazo"); c2.write("- Liderazgo proyectos\n- Especialización")
-        c3.markdown("#### Largo Plazo"); c3.write("- Jefatura área\n- Estrategia")
-    else: st.warning("Defina un cargo en la Pestaña 2.")
+    st.header("Plan de Cierre de Brechas")
+    if st.session_state.brechas_detectadas:
+        st.write("Basado en el análisis del CV, se sugiere:")
+        for brecha in st.session_state.brechas_detectadas:
+            st.warning(f"🔸 **Brecha:** {brecha} -> **Acción:** Capacitación técnica o certificación en 3 meses.")
+    else:
+        st.info("Analice un CV en Pestaña 3 para ver brechas específicas.")
 
-# TAB 5: CONTRATOS (CORREGIDO DATE Y KEYS)
+# TAB 5: CONTRATOS (CORREGIDO)
 with tabs[4]:
-    st.header("Generador Legal (Agent Powered)")
+    st.header("Generador Legal")
     if st.session_state.calculo_actual:
-        if not st.session_state.empresa['rut']: st.warning("⚠️ Complete 'Datos Empresa' en la barra lateral.")
-        
         with st.form("form_legal"):
-            st.markdown("#### Datos del Trabajador")
+            st.subheader("Datos Trabajador")
             c1, c2 = st.columns(2)
-            # Auto-relleno si se detectó en CV
-            val_nombre = st.session_state.candidato_detectado if st.session_state.candidato_detectado else ""
-            tn = c1.text_input("Nombre Completo", value=val_nombre)
+            tn = c1.text_input("Nombre Completo")
             tr = c2.text_input("RUT")
             tnac = c1.text_input("Nacionalidad", "Chilena")
             tdir = c2.text_input("Domicilio")
+            # FECHA CORREGIDA: Sin límite inferior ridículo y hasta hoy
+            tfec = st.date_input("Fecha Nacimiento", min_value=date(1940,1,1), max_value=datetime.now())
             
-            # FECHA NACIMIENTO CORREGIDA (Rango amplio)
-            tfec = st.date_input("Nacimiento", value=date(2000, 1, 1), min_value=date(1940, 1, 1), max_value=date(2008, 1, 1))
-            
-            st.markdown("#### Condiciones")
+            st.subheader("Condiciones")
             cc1, cc2 = st.columns(2)
             fini = cc1.date_input("Inicio Contrato", value=datetime.now())
             tcon = cc2.selectbox("Tipo", ["Indefinido", "Plazo Fijo", "Obra Faena"])
-            func = st.text_area("Funciones Específicas", "Las propias del cargo y las encomendadas por la jefatura.")
+            func = st.text_area("Funciones Específicas", "Las propias del cargo.")
             
             if st.form_submit_button("GENERAR CONTRATO (.DOCX)"):
-                datos_form = {
-                    **st.session_state.empresa, # Hereda todo del sidebar (inc. giro)
-                    "empresa_giro": st.session_state.empresa.get('giro', 'Servicios'), # Fallback seguridad
-                    "trab_nombre": tn, "trab_rut": tr, "trab_nacionalidad": tnac,
-                    "trab_nacimiento": tfec, "trab_dir": tdir,
-                    "cargo": st.session_state.cargo_actual if st.session_state.cargo_actual else "Trabajador",
-                    "funciones": func,
-                    "fecha_inicio": fini, "tipo_contrato": tcon,
-                    "colacion": st.session_state.calculo_actual['No Imponibles'] // 2,
-                    "movilizacion": st.session_state.calculo_actual['No Imponibles'] // 2
-                }
-                bio = generar_contrato_legal_word(st.session_state.calculo_actual, datos_form)
-                st.download_button("⬇️ Descargar Documento Legal", bio.getvalue(), f"Contrato_{tn}.docx")
-    else: st.info("Primero calcule un sueldo en Pestaña 1.")
+                # Se mezcla datos de empresa (sidebar) con datos trabajador (form)
+                datos_form = {**st.session_state.empresa, "trab_nombre": tn, "trab_rut": tr, "trab_nacionalidad": tnac, "trab_nacimiento": tfec, "trab_dir": tdir, "cargo": st.session_state.cargo_actual, "funciones": func, "fecha_inicio": fini, "tipo_contrato": tcon, "colacion": st.session_state.calculo_actual['No Imponibles']//2, "movilizacion": st.session_state.calculo_actual['No Imponibles']//2}
+                
+                bio = generar_contrato_word(st.session_state.calculo_actual, datos_form)
+                st.download_button("⬇️ Descargar DOCX", bio.getvalue(), f"Contrato_{tn}.docx")
+    else: st.warning("Calcule sueldo en Pestaña 1 primero.")
 
-# TAB 6: INDICADORES (CORREGIDO KEYERROR)
+# TAB 6: INDICADORES
 with tabs[5]:
     st.header("Indicadores Oficiales")
-    c1, c2 = st.columns(2)
-    with c1:
-        st.subheader("Tasas AFP")
-        st.table(pd.DataFrame({"AFP": ["Capital", "Cuprum", "Habitat", "PlanVital", "Provida", "Modelo", "Uno"], "Tasa": ["11,44%", "11,44%", "11,27%", "11,16%", "11,45%", "10,58%", "10,46%"]}))
-    with c2:
-        st.subheader("Seguro Cesantía")
-        st.table(pd.DataFrame({"Contrato": ["Indefinido", "Plazo Fijo", "Casa Particular"], "Empleador": ["2,4%", "3,0%", "3,0%"], "Trabajador": ["0,6%", "0,0%", "0,0%"]}))
+    # Tablas estáticas seguras
+    st.subheader("AFP")
+    st.table(pd.DataFrame({"AFP": ["Capital", "Cuprum", "Habitat", "PlanVital", "Provida", "Modelo", "Uno"], "Tasa": ["11,44%", "11,44%", "11,27%", "11,16%", "11,45%", "10,58%", "10,46%"]}))
