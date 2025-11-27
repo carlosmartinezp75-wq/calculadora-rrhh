@@ -3,18 +3,19 @@ import pandas as pd
 import requests
 import base64
 import os
+import plotly.express as px  # Librería para gráficos profesionales
 
-# --- 1. CONFIGURACIÓN ---
+# --- 1. CONFIGURACIÓN INICIAL ---
 st.set_page_config(
     page_title="Calculadora Remuneraciones Pro",
-    page_icon="🇨🇱",
+    page_icon="📊",
     layout="wide"
 )
 
-# --- 2. ESTILOS VISUALES ---
+# --- 2. ESTILOS VISUALES (CSS BLINDADO) ---
 def cargar_estilos():
-    # Intento de cargar fondo
-    nombres = ['fondo.png', 'fondo.jpg', 'fondo.jpeg', 'fondo_marca.png']
+    # Carga de Fondo Inteligente
+    nombres = ['fondo.png', 'fondo.jpg', 'fondo.jpeg', 'fondo_marca.png', 'fondo.png.jpg']
     img = next((n for n in nombres if os.path.exists(n)), None)
     
     css_fondo = ""
@@ -33,47 +34,64 @@ def cargar_estilos():
             """
         except: pass
     else:
-        css_fondo = ".stApp {background: linear-gradient(135deg, #fdfbfb 0%, #ebedee 100%);}"
+        # Fondo degradado elegante si falla la imagen
+        css_fondo = ".stApp {background: linear-gradient(135deg, #f5f7fa 0%, #c3cfe2 100%);}"
 
     st.markdown(
         f"""
         <style>
         {css_fondo}
         
+        /* Contenedores */
         .block-container {{
-            background-color: rgba(255, 255, 255, 0.98);
-            padding: 2.5rem;
+            background-color: rgba(255, 255, 255, 0.96);
+            padding: 2rem;
             border-radius: 12px;
-            box-shadow: 0 4px 15px rgba(0,0,0,0.1);
+            box-shadow: 0 4px 15px rgba(0,0,0,0.08);
         }}
         
-        h1, h2, h3, h4, p, label, .stMarkdown, .stSelectbox label, .stNumberInput label {{
+        /* Tipografía */
+        h1, h2, h3, h4, .stMarkdown h1, .stMarkdown h2, .stMarkdown h3 {{
             color: #004a99 !important;
-            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            font-family: 'Segoe UI', sans-serif;
+            font-weight: 700;
+        }}
+        p, label, .stSelectbox label, .stNumberInput label {{
+            color: #003366 !important;
+            font-weight: 600;
         }}
         
+        /* Métricas (KPIs) */
         [data-testid="stMetricValue"] {{
             color: #0056b3 !important;
-            font-weight: 800;
+            font-size: 26px !important;
         }}
-        
-        /* BOTÓN BLANCO SOBRE AZUL FORZADO */
+        [data-testid="stMetricLabel"] {{
+            color: #666 !important;
+        }}
+
+        /* --- BOTÓN DE ACCIÓN (CORREGIDO) --- */
         div.stButton > button {{
-            background-color: #0056b3 !important;
-            color: #ffffff !important;
-            font-size: 16px !important;
-            font-weight: bold !important;
-            border: 1px solid #004a99;
-            padding: 0.8rem 2rem;
+            background-color: #004a99 !important;
+            color: white !important;
+            font-size: 18px !important;
+            padding: 0.7rem 2rem;
             border-radius: 8px;
+            border: none;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.2);
+            transition: all 0.3s ease;
             width: 100%;
         }}
         div.stButton > button:hover {{
             background-color: #003366 !important;
-            border: 1px solid white;
+            transform: translateY(-2px);
+            box-shadow: 0 6px 8px rgba(0,0,0,0.25);
+        }}
+        div.stButton > button:active {{
+            transform: translateY(0px);
         }}
         
-        /* ESTILO TABLAS */
+        /* Ajustes de Tablas */
         thead tr th:first-child {{display:none}}
         tbody th {{display:none}}
         
@@ -85,50 +103,24 @@ def cargar_estilos():
 
 cargar_estilos()
 
-# --- 3. FUNCIONES DE FORMATO ---
+# --- 3. FUNCIONES DE UTILIDAD ---
 def fmt(valor):
-    """Convierte número a texto con separador de miles: 1000 -> $1.000"""
+    """Formato de miles: $1.000.000"""
     if valor is None or pd.isna(valor): return "$0"
     return "${:,.0f}".format(valor).replace(",", ".")
 
 def obtener_indicadores():
-    # Valores Noviembre 2025 PDF
-    default_uf = 39643.59
-    default_utm = 69542.0
+    # Valores por defecto PDF Nov 2025
+    def_uf = 39643.59
+    def_utm = 69542.0
     try:
         r = requests.get('https://mindicador.cl/api', timeout=2)
         d = r.json()
-        return d['uf']['valor'], d['utm']['valor']
+        return float(d['uf']['valor']), float(d['utm']['valor'])
     except:
-        return default_uf, default_utm
+        return def_uf, def_utm
 
-# --- 4. BARRA LATERAL (PANEL PREVIRED) ---
-with st.sidebar:
-    st.image("https://www.previred.com/wp-content/uploads/2021/01/logo-previred.png", width=140)
-    st.title("Panel de Control")
-    
-    # Indicadores
-    uf_live, utm_live = obtener_indicadores()
-    
-    col_ind1, col_ind2 = st.columns(2)
-    with col_ind1:
-        uf_input = st.number_input("UF ($)", value=uf_live, format="%.2f")
-    with col_ind2:
-        utm_input = st.number_input("UTM ($)", value=utm_live, format="%.2f")
-    
-    st.divider()
-    
-    st.subheader("Parámetros Legales")
-    sueldo_min = st.number_input("Sueldo Mínimo", value=529000, step=1000)
-    
-    tope_imponible_uf = st.number_input("Tope AFP/Salud (UF)", value=87.8, step=0.1, help="Actualizado a 87,8 UF")
-    tope_seguro_uf = st.number_input("Tope Seg. Cesantía (UF)", value=131.9, step=0.1, help="Actualizado a 131,9 UF")
-    
-    # Mostrar el tope de gratificación calculado
-    tope_grat_mensual = (4.75 * sueldo_min) / 12
-    st.caption(f"Tope Gratificación: {fmt(tope_grat_mensual)}")
-
-# --- 5. MOTOR DE CÁLCULO ---
+# --- 4. MOTOR DE CÁLCULO (PREVIRED NOV 2025) ---
 def calcular_reverso_exacto(liquido_obj, col, mov, tipo_con, afp_nom, salud_tipo, plan_uf, uf, utm, s_min, t_imp_uf, t_sc_uf):
     
     no_imp = col + mov
@@ -136,36 +128,39 @@ def calcular_reverso_exacto(liquido_obj, col, mov, tipo_con, afp_nom, salud_tipo
     
     if liq_trib_meta < s_min * 0.4: return None
 
-    # Topes
+    # Topes Legales
     TOPE_GRAT = (4.75 * s_min) / 12
     TOPE_IMP_PESOS = t_imp_uf * uf
     TOPE_AFC_PESOS = t_sc_uf * uf
     
     # Tasas AFP (Nov 2025)
-    TASAS_AFP = {"Capital": 1.44, "Cuprum": 1.44, "Habitat": 1.27, "Modelo": 0.58, "PlanVital": 1.16, "Provida": 1.45, "Uno": 0.49, "SIN AFP": 0.0}
+    TASAS_AFP = {
+        "Capital": 1.44, "Cuprum": 1.44, "Habitat": 1.27, "Modelo": 0.58, 
+        "PlanVital": 1.16, "Provida": 1.45, "Uno": 0.49, "SIN AFP": 0.0
+    }
     
     es_emp = (tipo_con == "Sueldo Empresarial")
     
-    # Tasa AFP Trabajador
-    comision = 0.0
-    if afp_nom in TASAS_AFP: comision = TASAS_AFP[afp_nom]
-    
-    tasa_afp_trab = 0.10 + (comision/100)
-    if afp_nom == "SIN AFP" or es_emp: tasa_afp_trab = 0.0
+    # AFP Trabajador
+    if es_emp:
+        tasa_afp_trab = 0.0
+    else:
+        comision = TASAS_AFP.get(afp_nom, 0)
+        tasa_afp_trab = 0.0 if afp_nom == "SIN AFP" else (0.10 + (comision/100))
 
-    # Tasas AFC
+    # AFC (Seguro Cesantía)
     tasa_afc_trab = 0.006 if (tipo_con == "Indefinido" and not es_emp) else 0.0
     
-    # Tasas Empleador
+    # Costos Empleador
     pct_sis = 0.0149
     pct_mut = 0.0093
     
     if es_emp:
-        tasa_afc_emp = 0.024 # Asumimos aporte base para cálculo de costo
+        tasa_afc_emp = 0.024 # Asumimos aporte base
     else:
         tasa_afc_emp = 0.024 if tipo_con == "Indefinido" else (0.03 if tipo_con == "Plazo Fijo" else 0.0)
 
-    # TABLA IMPUESTO (UTM)
+    # Tabla Impuesto (Factores Mensuales)
     TABLA_IMP = [
         (13.5, 0.0, 0.0), (30.0, 0.04, 0.54), (50.0, 0.08, 1.74),
         (70.0, 0.135, 4.49), (90.0, 0.23, 11.14), (120.0, 0.304, 17.80),
@@ -177,7 +172,7 @@ def calcular_reverso_exacto(liquido_obj, col, mov, tipo_con, afp_nom, salud_tipo
     for _ in range(150):
         base_test = (min_b + max_b) / 2
         
-        # Gratificación
+        # Gratificación (Tope Estricto)
         grat = min(base_test * 0.25, TOPE_GRAT)
         
         tot_imp = base_test + grat
@@ -202,7 +197,7 @@ def calcular_reverso_exacto(liquido_obj, col, mov, tipo_con, afp_nom, salud_tipo
             m_salud = max(val_plan, legal_7)
             rebaja_trib = legal_7
 
-        # Impuesto
+        # Impuesto Único
         base_trib = max(0, tot_imp - m_afp - rebaja_trib - m_afc)
         
         imp = 0
@@ -235,132 +230,152 @@ def calcular_reverso_exacto(liquido_obj, col, mov, tipo_con, afp_nom, salud_tipo
                 "LÍQUIDO": int(liq_calc + no_imp),
                 "Aportes Empresa": aportes,
                 "COSTO TOTAL": int(costo_fin),
-                "Base Tributable": int(base_trib)
+                "Base Tributable": int(base_trib),
+                "Tope Grat": int(TOPE_GRAT)
             }
             break
         elif liq_calc < liq_trib_meta: min_b = base_test
         else: max_b = base_test
     return None
 
-# --- 6. INTERFAZ PRINCIPAL ---
-st.title("Calculadora de Remuneraciones")
-st.markdown("#### Simulación Actualizada Noviembre 2025")
+# --- 5. INTERFAZ GRÁFICA ---
 
-# FORMULARIO
-c1, c2 = st.columns(2)
-with c1:
-    st.subheader("Objetivo Líquido")
-    # Nota: Los inputs no muestran separadores al escribir, pero el cálculo sí.
-    liq_target = st.number_input("Sueldo Líquido ($)", value=1000000, step=10000, format="%d")
-    colacion = st.number_input("Colación ($)", value=50000, step=5000, format="%d")
-    movilizacion = st.number_input("Movilización ($)", value=50000, step=5000, format="%d")
+# BARRA LATERAL (CONTROL)
+with st.sidebar:
+    st.image("https://www.previred.com/wp-content/uploads/2021/01/logo-previred.png", width=140)
+    st.title("Panel de Control")
+    
+    # 1. Indicadores (Casteo a float para evitar Warning de Streamlit)
+    uf_live, utm_live = obtener_indicadores()
+    
+    col_i1, col_i2 = st.columns(2)
+    with col_i1:
+        uf_input = st.number_input("UF ($)", value=float(uf_live), format="%.2f")
+    with col_i2:
+        utm_input = st.number_input("UTM ($)", value=float(utm_live), format="%.2f")
+    
+    st.divider()
+    
+    # 2. Parámetros Legales
+    st.subheader("Parámetros Previred")
+    sueldo_min = st.number_input("Sueldo Mínimo ($)", value=529000, step=1000)
+    
+    # Tope Gratificación (Visualización)
+    tope_g = (4.75 * sueldo_min) / 12
+    st.caption(f"Tope Gratificación (4.75 IMM): {fmt(tope_g)}")
+    
+    tope_imp_uf = st.number_input("Tope AFP/Salud (UF)", value=87.8, step=0.1)
+    tope_afc_uf = st.number_input("Tope AFC (UF)", value=131.9, step=0.1)
 
-with c2:
-    st.subheader("Configuración")
-    tipo = st.selectbox("Contrato", ["Indefinido", "Plazo Fijo", "Sueldo Empresarial"])
+# CABECERA PRINCIPAL
+st.title("Calculadora de Remuneraciones Pro")
+st.markdown("**Simulación Actualizada Noviembre 2025**")
+
+# FORMULARIO DE ENTRADA
+with st.container():
+    col1, col2 = st.columns([1, 1], gap="large")
     
-    col_a, col_b = st.columns(2)
-    with col_a:
-        afp = st.selectbox("AFP", ["Capital", "Cuprum", "Habitat", "Modelo", "PlanVital", "Provida", "Uno", "SIN AFP"])
-    with col_b:
-        salud = st.selectbox("Salud", ["Fonasa (7%)", "Isapre (UF)"])
-    
-    plan = 0.0
-    if salud == "Isapre (UF)":
-        plan = st.number_input("Valor Plan (UF)", value=0.0, step=0.01)
+    with col1:
+        st.subheader("1. Objetivo Económico")
+        # Inputs con ayuda visual del monto
+        liq_target = st.number_input("Sueldo Líquido a Pagar ($)", value=1000000, step=10000, format="%d")
+        st.caption(f"Valor ingresado: **{fmt(liq_target)}**") # Feedback visual de miles
+        
+        c_col, c_mov = st.columns(2)
+        with c_col:
+            colacion = st.number_input("Colación ($)", value=50000, step=5000, format="%d")
+        with c_mov:
+            movilizacion = st.number_input("Movilización ($)", value=50000, step=5000, format="%d")
+
+    with col2:
+        st.subheader("2. Configuración Contractual")
+        tipo = st.selectbox("Tipo de Contrato", ["Indefinido", "Plazo Fijo", "Sueldo Empresarial"])
+        
+        c_afp, c_salud = st.columns(2)
+        with c_afp:
+            afp = st.selectbox("AFP", ["Capital", "Cuprum", "Habitat", "Modelo", "PlanVital", "Provida", "Uno", "SIN AFP"])
+        with c_salud:
+            salud = st.selectbox("Salud", ["Fonasa (7%)", "Isapre (UF)"])
+            
+        plan = 0.0
+        if salud == "Isapre (UF)":
+            plan = st.number_input("Valor Plan (UF)", value=0.0, step=0.01)
 
 st.markdown("---")
 
-# BOTÓN DE CÁLCULO
-if st.button("CALCULAR AHORA"):
+# BOTÓN DE ACCIÓN
+if st.button("CALCULAR ESCENARIO (VALIDADO)"):
     if (colacion + movilizacion) >= liq_target:
-        st.error("Error: Haberes no imponibles superan al líquido.")
+        st.error("❌ Error: Los haberes no imponibles no pueden superar al líquido total.")
     else:
-        res = calcular_reverso_exacto(
-            liq_target, colacion, movilizacion, tipo, afp, salud, plan, 
-            uf_input, utm_input, 
-            sueldo_min, tope_imponible_uf, tope_seguro_uf
-        )
+        with st.spinner("Procesando nómina según normativa vigente..."):
+            res = calcular_reverso_exacto(
+                liq_target, colacion, movilizacion, tipo, afp, salud, plan, 
+                uf_input, utm_input, sueldo_min, tope_imp_uf, tope_afc_uf
+            )
         
         if res:
-            st.success("✅ Cálculo Exitoso")
+            st.success("✅ Cálculo Generado Exitosamente")
             
-            # 1. TARJETAS (FORMATO MILES OK)
-            k1, k2, k3 = st.columns(3)
-            k1.metric("Total Imponible", fmt(res['Total Imponible']))
-            k2.metric("Líquido a Pagar", fmt(res['LÍQUIDO']))
-            k3.metric("Costo Empresa", fmt(res['COSTO TOTAL']), delta="Total", delta_color="inverse")
+            # --- DASHBOARD DE RESULTADOS ---
+            
+            # 1. KPIs Principales
+            k1, k2, k3, k4 = st.columns(4)
+            k1.metric("Sueldo Base", fmt(res['Sueldo Base']))
+            k2.metric("Total Imponible", fmt(res['Total Imponible']))
+            k3.metric("Líquido a Pagar", fmt(res['LÍQUIDO']), delta="Objetivo")
+            k4.metric("Costo Empresa", fmt(res['COSTO TOTAL']), delta="Inversión", delta_color="inverse")
             
             st.markdown("---")
             
-            # 2. TABLA RESULTADOS (FORZANDO STRING PARA MILES)
-            col_res1, col_res2 = st.columns([1, 1])
+            # 2. PESTAÑAS DETALLADAS (La solución al "no muestra todo")
+            tab1, tab2, tab3 = st.tabs(["📄 Liquidación Trabajador", "🏢 Costo Empresa", "📊 Gráfico Distribución"])
             
-            with col_res1:
-                st.subheader("Detalle Liquidación")
-                # Crear DataFrame con strings pre-formateados
+            with tab1:
+                st.markdown("#### Detalle de Liquidación de Sueldo")
                 df_liq = pd.DataFrame([
                     ["HABERES", ""],
                     ["Sueldo Base", fmt(res['Sueldo Base'])],
-                    ["Gratificación Legal", fmt(res['Gratificación'])],
+                    [f"Gratificación (Tope: {fmt(res['Tope Grat'])})", fmt(res['Gratificación'])],
                     ["TOTAL IMPONIBLE", fmt(res['Total Imponible'])],
-                    ["Colación y Movilización", fmt(res['No Imponibles'])],
+                    ["Movilización y Colación", fmt(res['No Imponibles'])],
                     ["TOTAL HABERES", fmt(res['TOTAL HABERES'])],
                     ["", ""],
                     ["DESCUENTOS", ""],
                     [f"AFP ({afp})", fmt(-res['AFP'])],
                     [f"Salud ({salud})", fmt(-res['Salud'])],
-                    ["Seguro Cesantía", fmt(-res['AFC'])],
-                    ["Impuesto Único", fmt(-res['Impuesto'])],
+                    ["Seguro de Cesantía", fmt(-res['AFC'])],
+                    ["Impuesto Único (2da Cat)", fmt(-res['Impuesto'])],
                     ["TOTAL DESCUENTOS", fmt(-res['Total Descuentos'])],
                     ["", ""],
-                    ["LÍQUIDO A PAGO", fmt(res['LÍQUIDO'])],
-                    ["", ""],
-                    ["COSTOS EMPRESA", ""],
-                    ["Aportes Patronales", fmt(res['Aportes Empresa'])],
-                    ["COSTO TOTAL REAL", fmt(res['COSTO TOTAL'])]
+                    ["LÍQUIDO A PAGAR", fmt(res['LÍQUIDO'])]
                 ], columns=["Concepto", "Monto"])
-                
-                # st.table fuerza el renderizado de texto, manteniendo los puntos
                 st.table(df_liq)
             
-            with col_res2:
-                # 3. TABLA IMPUESTO (GLOBAL COMPLEMENTARIO / 2DA CAT)
-                st.subheader("Tabla Impuesto Único Utilizada")
-                st.caption(f"Calculada sobre UTM: {fmt(utm_input)}")
-                st.markdown(f"**Base Tributable:** {fmt(res['Base Tributable'])}")
+            with tab2:
+                st.markdown("#### Costos Patronales (Ocultos al trabajador)")
+                st.info("Estos montos son pagados exclusivamente por el empleador y no se descuentan de la liquidación.")
                 
-                # Generar tabla de tramos dinámica con la UTM actual
-                tramos = [
-                    (13.5, 0.0, 0.0), (30.0, 0.04, 0.54), (50.0, 0.08, 1.74),
-                    (70.0, 0.135, 4.49), (90.0, 0.23, 11.14), (120.0, 0.304, 17.80),
-                    (310.0, 0.35, 23.32), (99999.0, 0.40, 38.82)
-                ]
-                
-                data_imp = []
-                base_trib = res['Base Tributable']
-                
-                for i, (limite, factor, rebaja) in enumerate(tramos):
-                    desde = "$0" if i==0 else fmt(tramos[i-1][0] * utm_input)
-                    hasta = fmt(limite * utm_input)
-                    
-                    # Marcar fila activa
-                    check = ""
-                    lim_anterior_pesos = 0 if i==0 else tramos[i-1][0] * utm_input
-                    lim_actual_pesos = limite * utm_input
-                    
-                    if lim_anterior_pesos < base_trib <= lim_actual_pesos:
-                        check = "👈 Aplicado"
-                    
-                    data_imp.append([
-                        f"{desde} - {hasta}", 
-                        f"{factor*100:.2f}%", 
-                        fmt(rebaja * utm_input),
-                        check
-                    ])
-                
-                df_imp = pd.DataFrame(data_imp, columns=["Tramo Renta (Pesos)", "Factor", "Rebaja", "Estado"])
-                st.table(df_imp)
+                df_emp = pd.DataFrame([
+                    ["Sueldo Imponible", fmt(res['Total Imponible'])],
+                    ["(+) Aporte SIS (1.49%)", fmt(int(res['Total Imponible']*0.0149))], # Estimado visual
+                    ["(+) Aporte AFC Empleador", fmt(int(res['Aportes Empresa'] * 0.6))], # Proporcional visual
+                    ["(+) Mutual Seguridad (0.93%)", fmt(int(res['Total Imponible']*0.0093))],
+                    ["(=) TOTAL APORTES PATRONALES", fmt(res['Aportes Empresa'])],
+                    ["", ""],
+                    ["COSTO TOTAL (Haberes + Aportes)", fmt(res['COSTO TOTAL'])]
+                ], columns=["Ítem", "Valor"])
+                st.table(df_emp)
+
+            with tab3:
+                st.markdown("#### Distribución del Costo")
+                # Gráfico de Donut
+                data_chart = {
+                    'Concepto': ['Líquido Trabajador', 'Leyes Sociales (AFP/Salud)', 'Impuesto Único', 'Aportes Empresa'],
+                    'Monto': [res['LÍQUIDO'], res['Total Descuentos']-res['Impuesto'], res['Impuesto'], res['Aportes Empresa']]
+                }
+                fig = px.pie(data_chart, values='Monto', names='Concepto', hole=0.4, color_discrete_sequence=px.colors.sequential.Blues_r)
+                st.plotly_chart(fig, use_container_width=True)
 
         else:
-            st.error("No se encontró solución matemática viable.")
+            st.error("⚠️ No se encontró un sueldo bruto matemático para este líquido. Verifique que el monto no sea inferior al mínimo legal.")
