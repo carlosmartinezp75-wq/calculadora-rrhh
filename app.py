@@ -7,6 +7,13 @@ import plotly.express as px
 import plotly.graph_objects as go
 import random
 
+# --- 0. VALIDACIÓN DE LIBRERÍAS (CORRECCIÓN ERROR NAME_ERROR) ---
+try:
+    import pdfplumber
+    PDF_AVAILABLE = True
+except ImportError:
+    PDF_AVAILABLE = False
+
 # --- 1. CONFIGURACIÓN ---
 st.set_page_config(
     page_title="HR Suite Intelligence",
@@ -26,7 +33,6 @@ def cargar_estilos():
             with open(img, "rb") as f:
                 b64 = base64.b64encode(f.read()).decode()
             
-            # CSS CORREGIDO PARA FONDO TOTAL
             css_fondo = f"""
             [data-testid="stAppViewContainer"] {{
                 background-image: url("data:image/{ext};base64,{b64}");
@@ -35,7 +41,6 @@ def cargar_estilos():
                 background-repeat: no-repeat;
                 background-attachment: fixed;
             }}
-            /* Fondo de respaldo para el header */
             [data-testid="stHeader"] {{
                 background-color: rgba(0,0,0,0);
             }}
@@ -53,7 +58,6 @@ def cargar_estilos():
         <style>
         {css_fondo}
         
-        /* Contenedor Principal (Tarjeta Blanca) */
         .block-container {{
             background-color: rgba(255, 255, 255, 0.98);
             padding: 3rem;
@@ -62,7 +66,6 @@ def cargar_estilos():
             max-width: 95% !important;
         }}
         
-        /* Tipografía Azul Corporativa */
         h1, h2, h3, h4, .stMarkdown h1, .stMarkdown h2, .stMarkdown h3 {{
             color: #004a99 !important;
             font-family: 'Segoe UI', sans-serif;
@@ -81,7 +84,6 @@ def cargar_estilos():
             border-radius: 8px;
         }}
         
-        /* Feedback Visual */
         .miles-feedback {{
             font-size: 0.85rem;
             color: #28a745;
@@ -90,7 +92,6 @@ def cargar_estilos():
             margin-bottom: 15px;
         }}
         
-        /* Botón de Acción */
         div.stButton > button {{
             background-color: #004a99 !important;
             color: white !important;
@@ -110,7 +111,6 @@ def cargar_estilos():
             box-shadow: 0 6px 15px rgba(0,0,0,0.3);
         }}
         
-        /* Ajuste Tablas */
         thead tr th:first-child {{display:none}}
         tbody th {{display:none}}
         
@@ -132,7 +132,6 @@ def mostrar_feedback_miles(valor):
         st.markdown(f'<p class="miles-feedback">Ingresaste: {fmt(valor)}</p>', unsafe_allow_html=True)
 
 def obtener_indicadores():
-    # Fallback Nov 2025
     def_uf, def_utm = 39643.59, 69542.0
     try:
         r = requests.get('https://mindicador.cl/api', timeout=2)
@@ -143,7 +142,6 @@ def obtener_indicadores():
 
 # --- 4. DATA TABLES (PREVIRED NOV 2025) ---
 def get_tabla_afp():
-    # Datos extraídos del PDF Nov 2025
     data = {
         "AFP": ["Capital", "Cuprum", "Habitat", "PlanVital", "Provida", "Modelo", "Uno"],
         "Tasa Trabajador": ["11,44%", "11,44%", "11,27%", "11,16%", "11,45%", "10,58%", "10,46%"],
@@ -199,13 +197,11 @@ def calcular_reverso_exacto(liquido_obj, col, mov, tipo_con, afp_nom, salud_tipo
     TOPE_IMP_PESOS = t_imp_uf * uf
     TOPE_AFC_PESOS = t_sc_uf * uf
     
-    # Tasas reales Nov 2025 para cálculo
     TASAS_AFP_CALC = {"Capital": 11.44, "Cuprum": 11.44, "Habitat": 11.27, "PlanVital": 11.16, "Provida": 11.45, "Modelo": 10.58, "Uno": 10.46, "SIN AFP": 0.0}
     
     es_emp = (tipo_con == "Sueldo Empresarial")
     if es_emp: tasa_afp = 0.0
     else:
-        # La tabla entrega tasa total, restamos 10 para sacar comisión (aunque para el descuento usamos el total)
         tasa_total = TASAS_AFP_CALC.get(afp_nom, 0)
         tasa_afp = 0.0 if afp_nom == "SIN AFP" else (tasa_total / 100)
 
@@ -274,6 +270,9 @@ with st.sidebar:
     st.divider()
     st.subheader("Parámetros de Cálculo")
     sueldo_min = st.number_input("Sueldo Mínimo ($)", value=529000, step=1000)
+    tope_grat = (4.75 * sueldo_min) / 12
+    st.caption(f"Tope Gratificación: {fmt(tope_grat)}")
+    
     tope_imp_uf = st.number_input("Tope AFP (UF)", value=87.8, step=0.1)
     tope_afc_uf = st.number_input("Tope AFC (UF)", value=131.9, step=0.1)
 
@@ -281,7 +280,7 @@ with st.sidebar:
 st.title("HR Suite Intelligence")
 st.markdown("**Gestión Estratégica de Compensaciones y Talento**")
 
-# TABS PRINCIPALES (AHORA SON 4)
+# TABS PRINCIPALES
 tab_calc, tab_perf, tab_cv, tab_ind = st.tabs([
     "💰 Calculadora Sueldos", 
     "📋 Perfil de Cargo", 
@@ -396,9 +395,13 @@ with tab_perf:
 # --- TAB 3: ANÁLISIS CV ---
 with tab_cv:
     st.header("Análisis de Brechas")
-    st.markdown("Módulo disponible con librerías de IA activas.")
-    # (Código simplificado para evitar errores si no hay librerías PDF)
-    if not PDF_AVAILABLE: st.warning("Instale 'pdfplumber' para activar.")
+    if not PDF_AVAILABLE:
+        st.warning("⚠️ Instale 'pdfplumber' para usar esta función.")
+    else:
+        st.markdown("Sube el CV (PDF) para comparar.")
+        uploaded_file = st.file_uploader("Subir CV (PDF)", type="pdf")
+        if uploaded_file:
+            st.success("CV Cargado (Simulación activa)")
 
 # --- TAB 4: INDICADORES (NUEVA) ---
 with tab_ind:
