@@ -2,43 +2,66 @@ import streamlit as st
 import pandas as pd
 import requests
 import base64
+import os
 
-# --- 1. CONFIGURACIÓN INICIAL (OBLIGATORIO PRIMERA LÍNEA) ---
+# --- 1. CONFIGURACIÓN (OBLIGATORIO AL INICIO) ---
 st.set_page_config(
     page_title="Calculadora Remuneraciones",
     page_icon="🏢",
     layout="centered"
 )
 
-# --- 2. GESTIÓN DEL FONDO E IMAGEN ---
-def cargar_fondo_seguro():
+# --- 2. GESTIÓN DE FONDO INTELIGENTE ---
+def cargar_fondo_inteligente():
     """
-    Intenta cargar fondo.png. Si falla, usa un degradado azul.
-    No rompe la app si falta la imagen.
+    Busca la imagen de fondo con varios nombres posibles
+    para evitar errores de extensiones (.jpg, .png, etc.)
     """
-    archivo_imagen = 'fondo.png' # <--- ASEGÚRATE QUE EN GITHUB SE LLAME ASÍ
+    # Lista de nombres que intentaremos buscar
+    nombres_posibles = [
+        'fondo.png', 
+        'fondo.jpg', 
+        'fondo.jpeg', 
+        'fondo_marca.png', 
+        'fondo.png.jpg', # Error común de Windows
+        'background.png'
+    ]
     
-    try:
-        with open(archivo_imagen, "rb") as f:
-            data = f.read()
-            bin_str = base64.b64encode(data).decode()
-        
-        # Si encuentra la imagen, la pone
-        st.markdown(
-            f"""
-            <style>
-            .stApp {{
-                background-image: url("data:image/png;base64,{bin_str}");
-                background-size: cover;
-                background-position: center;
-                background-attachment: fixed;
-            }}
-            </style>
-            """,
-            unsafe_allow_html=True
-        )
-    except FileNotFoundError:
-        # SI NO LA ENCUENTRA, USA ESTE FONDO AZUL EN VEZ DE QUEDAR EN BLANCO
+    imagen_encontrada = None
+    
+    # Buscamos cuál existe
+    for nombre in nombres_posibles:
+        if os.path.exists(nombre):
+            imagen_encontrada = nombre
+            break
+            
+    if imagen_encontrada:
+        # Si la encontramos, la cargamos
+        ext = imagen_encontrada.split('.')[-1]
+        try:
+            with open(imagen_encontrada, "rb") as f:
+                data = f.read()
+                bin_str = base64.b64encode(data).decode()
+            
+            st.markdown(
+                f"""
+                <style>
+                .stApp {{
+                    background-image: url("data:image/{ext};base64,{bin_str}");
+                    background-size: cover;
+                    background-position: center;
+                    background-attachment: fixed;
+                }}
+                </style>
+                """,
+                unsafe_allow_html=True
+            )
+            # Descomenta la siguiente línea si quieres saber qué archivo cargó (para debug)
+            # st.toast(f"Fondo cargado: {imagen_encontrada}", icon="✅")
+        except Exception:
+            pass
+    else:
+        # Si NO encuentra ninguna imagen, usa el degradado azul corporativo
         st.markdown(
             """
             <style>
@@ -49,47 +72,47 @@ def cargar_fondo_seguro():
             """,
             unsafe_allow_html=True
         )
-        st.toast("⚠️ No detecté 'fondo.png', usando modo estándar.", icon="ℹ️")
+        st.toast("⚠️ No encontré la imagen de fondo. Suba 'fondo.png' a GitHub.", icon="🖼️")
 
-# --- 3. ESTILOS VISUALES (BOTONES Y TEXTOS) ---
+# --- 3. ESTILOS VISUALES ---
 def cargar_estilos_css():
     st.markdown(
         """
         <style>
-        /* Contenedor principal estilo tarjeta */
+        /* Contenedor Blanco Semitransparente */
         .block-container {
-            background-color: rgba(255, 255, 255, 0.95);
-            padding: 2rem;
+            background-color: rgba(255, 255, 255, 0.92);
+            padding: 2.5rem;
             border-radius: 15px;
-            box-shadow: 0 4px 20px rgba(0,0,0,0.1);
-            margin-top: 1rem;
+            box-shadow: 0 4px 20px rgba(0,0,0,0.15);
+            margin-top: 2rem;
         }
-        /* Textos Corporativos */
-        h1, h2, h3, p, div, label {
+        /* Tipografía Corporativa */
+        h1, h2, h3, p, label, .stMarkdown {
             color: #004a99 !important;
-            font-family: 'Arial', sans-serif;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
         }
         /* Métricas */
         [data-testid="stMetricValue"] {
             color: #0056b3 !important;
-            font-weight: 700;
+            font-weight: 800;
         }
-        /* Botón Calcular */
+        /* Botones */
         div.stButton > button {
             background-color: #0056b3;
             color: white;
             width: 100%;
             border-radius: 8px;
             padding: 0.8rem;
-            font-size: 16px;
             font-weight: bold;
             border: none;
+            transition: all 0.3s;
         }
         div.stButton > button:hover {
-            background-color: #003d80;
-            color: #ffffff;
+            background-color: #003366;
+            transform: scale(1.02);
         }
-        /* Ocultar menú de streamlit */
+        /* Ocultar elementos extra de Streamlit */
         #MainMenu {visibility: hidden;}
         footer {visibility: hidden;}
         header {visibility: hidden;}
@@ -99,10 +122,10 @@ def cargar_estilos_css():
     )
 
 # --- EJECUTAR CARGA VISUAL ---
-cargar_fondo_seguro()
+cargar_fondo_inteligente()
 cargar_estilos_css()
 
-# --- 4. LÓGICA DE CÁLCULO (NO TOCAR) ---
+# --- 4. LÓGICA DE NEGOCIO ---
 def fmt(valor):
     if valor is None or pd.isna(valor): return "$0"
     return "${:,.0f}".format(valor).replace(",", ".")
@@ -134,7 +157,6 @@ def calcular_simulacion(liquido_obj, col, mov, tipo, afp_nom, salud_tipo, plan_u
     # Búsqueda Binaria
     min_b, max_b = liq_buscado, liq_buscado * 2.2
     bruto_final = 0
-    
     TABLA_IMP = [(13.5,0,0), (30,0.04,0.54), (50,0.08,1.08), (70,0.135,2.73), (90,0.23,7.48), (120,0.304,12.66), (99999,0.35,16.80)]
 
     for _ in range(100):
@@ -189,16 +211,14 @@ def calcular_simulacion(liquido_obj, col, mov, tipo, afp_nom, salud_tipo, plan_u
 # --- 5. INTERFAZ GRÁFICA ---
 st.title("Calculadora de Remuneraciones")
 
-# Indicadores en la barra lateral
 with st.sidebar:
-    st.header("Indicadores")
+    st.header("Datos del Día")
     uf, utm = obtener_indicadores()
     st.metric("UF", fmt(uf).replace("$",""))
     st.metric("UTM", fmt(utm))
     st.caption("Fuente: Mindicador.cl")
 
-# Formulario
-st.markdown("### 1. Datos del Trabajador")
+st.markdown("### 1. Objetivo Económico")
 col1, col2 = st.columns(2)
 with col1:
     liq_target = st.number_input("Líquido a Pagar ($)", value=1000000, step=10000, format="%d")
@@ -232,9 +252,8 @@ if st.button("CALCULAR AHORA"):
             k2.metric("Líquido", fmt(res['LÍQUIDO']))
             k3.metric("Costo Empresa", fmt(res['COSTO TOTAL']), delta="Total", delta_color="inverse")
 
-            st.subheader("Detalle Liquidación")
+            st.subheader("Detalle de Liquidación")
             
-            # Tabla manual para control total del diseño
             df = pd.DataFrame([
                 ["HABERES", ""],
                 ["Sueldo Base", fmt(res['Sueldo Base'])],
@@ -255,7 +274,7 @@ if st.button("CALCULAR AHORA"):
                 ["COSTOS EMPRESA", ""],
                 ["Aportes Patronales", fmt(res['Aportes Empresa'])],
                 ["COSTO TOTAL", fmt(res['COSTO TOTAL'])]
-            ], columns=["Item", "Monto"])
+            ], columns=["Concepto", "Monto"])
             
             st.table(df)
         else:
