@@ -37,7 +37,7 @@ def cargar_fondo_inteligente():
         except:
             pass
 
-# --- 3. ESTILOS VISUALES (CORREGIDO BOTÓN) ---
+# --- 3. ESTILOS VISUALES (CORRECCIÓN BOTÓN) ---
 def cargar_estilos():
     st.markdown(
         """
@@ -58,23 +58,30 @@ def cargar_estilos():
             font-weight: 800;
         }
         
-        /* --- CORRECCIÓN DEL BOTÓN --- */
+        /* --- CORRECCIÓN CRÍTICA DE COLOR DE TEXTO --- */
         div.stButton > button {
-            background-color: #0056b3;
-            color: #ffffff !important; /* Texto BLANCO forzado */
+            background-color: #0056b3 !important;
+            color: #ffffff !important; /* Texto BLANCO forzado con !important */
             border-radius: 8px;
             font-weight: bold;
             border: none;
             width: 100%;
             padding: 0.8rem;
             font-size: 16px;
-            text-shadow: 0px 1px 2px rgba(0,0,0,0.2); /* Sombra para legibilidad */
+            text-shadow: 0px 1px 2px rgba(0,0,0,0.2);
         }
         div.stButton > button:hover {
-            background-color: #003366;
+            background-color: #003366 !important;
+            color: #ffffff !important;
+            border: 1px solid #ffffff;
+        }
+        div.stButton > button:active {
             color: #ffffff !important;
         }
-        /* --------------------------- */
+        div.stButton > button p {
+            color: #ffffff !important; /* Asegura que el párrafo interno sea blanco */
+        }
+        /* ------------------------------------------ */
 
         #MainMenu, footer, header {visibility: hidden;}
         </style>
@@ -98,25 +105,46 @@ def obtener_indicadores():
     except:
         return 38000.0, 67000.0
 
-# --- 5. MOTOR DE CÁLCULO ---
+# --- 5. MOTOR DE CÁLCULO (LÓGICA EMPRESARIAL ACTUALIZADA) ---
 def calcular_reverso_exacto(liquido_obj, col, mov, tipo_con, afp_nom, salud_tipo, plan_uf, uf, utm, sueldo_minimo, tope_uf_prev, tope_uf_afc):
+    
     no_imp = col + mov
     liquido_tributable_meta = liquido_obj - no_imp
     
     if liquido_tributable_meta < sueldo_minimo * 0.5: return None
 
+    # Topes
     TOPE_GRATIFICACION = (4.75 * sueldo_minimo) / 12
     TOPE_IMPONIBLE_PESOS = tope_uf_prev * uf
     TOPE_AFC_PESOS = tope_uf_afc * uf
     
+    # 1. Configuración AFP
     TASAS_AFP = {"Capital": 1.44, "Cuprum": 1.44, "Habitat": 1.27, "Modelo": 0.58, "PlanVital": 1.16, "Provida": 1.45, "Uno": 0.49, "SIN AFP": 0.0}
-    tasa_afp = 0.10 + (TASAS_AFP.get(afp_nom, 0)/100)
-    if afp_nom == "SIN AFP": tasa_afp = 0.0
-
+    
     es_empresarial = (tipo_con == "Sueldo Empresarial")
-    tasa_afc_trab = 0.006 if tipo_con == "Indefinido" else 0.0
-    tasa_afc_emp = 0.024 if tipo_con == "Indefinido" else (0.03 if tipo_con == "Plazo Fijo" else 0.0)
+    
+    if es_empresarial:
+        tasa_afp = 0.0 # Solicitud: Empresarial NO paga AFP
+    else:
+        tasa_afp = 0.10 + (TASAS_AFP.get(afp_nom, 0)/100)
+        if afp_nom == "SIN AFP": tasa_afp = 0.0
 
+    # 2. Configuración AFC (Seguro Cesantía)
+    # Solicitud: Empresarial SÍ debe considerar costo empresa de AFC
+    tasa_afc_trab = 0.006 if tipo_con == "Indefinido" else 0.0
+    
+    if es_empresarial:
+        tasa_afc_trab = 0.0 # Empresarial no descuenta al trabajador
+        tasa_afc_emp = 0.024 # Asumimos tasa estándar indefinido para costo empresa (2.4%)
+    else:
+        tasa_afc_emp = 0.024 if tipo_con == "Indefinido" else (0.03 if tipo_con == "Plazo Fijo" else 0.0)
+
+    # 3. Configuración SIS y Mutual
+    # Solicitud: Empresarial SÍ debe considerar estos costos
+    tasa_sis = 0.0149
+    tasa_mutual = 0.0093
+
+    # Tabla Impuesto
     TABLA_IMP = [(13.5,0,0), (30,0.04,0.54), (50,0.08,1.08), (70,0.135,2.73), (90,0.23,7.48), (120,0.304,12.66), (310,0.35,16.80), (99999,0.40,22.80)]
 
     min_base = 100000
@@ -125,8 +153,11 @@ def calcular_reverso_exacto(liquido_obj, col, mov, tipo_con, afp_nom, salud_tipo
     
     for _ in range(150):
         base_test = (min_base + max_base) / 2
+        
         gratificacion = min(base_test * 0.25, TOPE_GRATIFICACION)
-        if es_empresarial: gratificacion = 0
+        # Si es empresarial, usualmente es sueldo plano, pero si quieres gratificación, déjalo. 
+        # Si quieres que sea sueldo plano (sin grat), descomenta la siguiente línea:
+        # if es_empresarial: gratificacion = 0 
 
         total_imponible = base_test + gratificacion
         base_calc_prev = min(total_imponible, TOPE_IMPONIBLE_PESOS)
@@ -160,9 +191,11 @@ def calcular_reverso_exacto(liquido_obj, col, mov, tipo_con, afp_nom, salud_tipo
         liquido_calc = total_imponible - m_afp - m_salud - m_afc - impuesto
         
         if abs(liquido_calc - liquido_tributable_meta) < 5:
-            m_sis = int(base_calc_prev * 0.0149) if not es_empresarial else 0
+            # --- CÁLCULO DE COSTOS EMPRESA (ACTIVADO PARA TODOS) ---
+            m_sis = int(base_calc_prev * tasa_sis)
             m_afc_e = int(base_calc_afc * tasa_afc_emp)
-            m_mut = int(base_calc_prev * 0.0093) if not es_empresarial else 0
+            m_mut = int(base_calc_prev * tasa_mutual)
+            
             total_aportes = m_sis + m_afc_e + m_mut
             costo_total = total_imponible + no_imp + total_aportes
             
@@ -220,7 +253,7 @@ with c3:
 
 st.divider()
 
-# --- BOTÓN CORREGIDO ---
+# BOTÓN CON ESTILO CORREGIDO
 if st.button("CALCULAR (Validado Normativa)", type="primary"):
     if (colacion + movilizacion) >= liq_target:
         st.error("Error: Los haberes no imponibles son mayores al sueldo líquido.")
@@ -253,7 +286,7 @@ if st.button("CALCULAR (Validado Normativa)", type="primary"):
                 ["LÍQUIDO A PAGO", fmt(res['LÍQUIDO'])],
                 ["", ""],
                 ["COSTOS EMPRESA", ""],
-                ["Aportes Patronales", fmt(res['Aportes Empresa'])],
+                ["Aportes Patronales (SIS, AFC, Mutual)", fmt(res['Aportes Empresa'])],
                 ["COSTO TOTAL REAL", fmt(res['COSTO TOTAL'])]
             ], columns=["Concepto", "Monto"])
             st.table(df)
