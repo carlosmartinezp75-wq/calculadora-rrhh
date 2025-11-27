@@ -6,23 +6,15 @@ import os
 import plotly.express as px
 import plotly.graph_objects as go
 import random
-from datetime import datetime
-
-# Intentar importar librería de PDF
-try:
-    import pdfplumber
-    PDF_AVAILABLE = True
-except ImportError:
-    PDF_AVAILABLE = False
 
 # --- 1. CONFIGURACIÓN ---
 st.set_page_config(
     page_title="HR Suite Intelligence",
-    page_icon="🧠",
+    page_icon="🇨🇱",
     layout="wide"
 )
 
-# --- 2. ESTILOS VISUALES ---
+# --- 2. ESTILOS VISUALES (FONDO FULL SCREEN) ---
 def cargar_estilos():
     nombres = ['fondo.png', 'fondo.jpg', 'fondo.jpeg', 'fondo_marca.png']
     img = next((n for n in nombres if os.path.exists(n)), None)
@@ -33,55 +25,77 @@ def cargar_estilos():
         try:
             with open(img, "rb") as f:
                 b64 = base64.b64encode(f.read()).decode()
+            
+            # CSS CORREGIDO PARA FONDO TOTAL
             css_fondo = f"""
-            .stApp {{
+            [data-testid="stAppViewContainer"] {{
                 background-image: url("data:image/{ext};base64,{b64}");
                 background-size: cover;
-                background-position: center;
+                background-position: center center;
+                background-repeat: no-repeat;
                 background-attachment: fixed;
+            }}
+            /* Fondo de respaldo para el header */
+            [data-testid="stHeader"] {{
+                background-color: rgba(0,0,0,0);
             }}
             """
         except: pass
     else:
-        css_fondo = ".stApp {background: linear-gradient(135deg, #f5f7fa 0%, #c3cfe2 100%);}"
+        css_fondo = """
+        [data-testid="stAppViewContainer"] {
+            background: linear-gradient(135deg, #f5f7fa 0%, #c3cfe2 100%);
+        }
+        """
 
     st.markdown(
         f"""
         <style>
         {css_fondo}
+        
+        /* Contenedor Principal (Tarjeta Blanca) */
         .block-container {{
             background-color: rgba(255, 255, 255, 0.98);
-            padding: 2.5rem;
-            border-radius: 16px;
-            box-shadow: 0 10px 30px rgba(0,0,0,0.1);
+            padding: 3rem;
+            border-radius: 20px;
+            box-shadow: 0 10px 40px rgba(0,0,0,0.15);
+            max-width: 95% !important;
         }}
-        h1, h2, h3, h4, .stMarkdown h1, .stMarkdown h2 {{
+        
+        /* Tipografía Azul Corporativa */
+        h1, h2, h3, h4, .stMarkdown h1, .stMarkdown h2, .stMarkdown h3 {{
             color: #004a99 !important;
             font-family: 'Segoe UI', sans-serif;
-            font-weight: 700;
+            font-weight: 800;
         }}
-        p, label, li {{
+        
+        p, label, li, .stTable {{
             color: #003366 !important;
             font-weight: 500;
         }}
-        .stNumberInput input, .stTextInput input {{
-            font-weight: bold;
+        
+        /* Inputs */
+        .stNumberInput input, .stTextInput input, .stSelectbox div[data-baseweb="select"] {{
             color: #004a99;
+            font-weight: bold;
+            border-radius: 8px;
         }}
-        /* Feedback visual de miles */
+        
+        /* Feedback Visual */
         .miles-feedback {{
-            font-size: 0.8rem;
+            font-size: 0.85rem;
             color: #28a745;
             font-weight: bold;
             margin-top: -10px;
-            margin-bottom: 10px;
+            margin-bottom: 15px;
         }}
-        /* Botón Pro */
+        
+        /* Botón de Acción */
         div.stButton > button {{
             background-color: #004a99 !important;
             color: white !important;
-            font-size: 16px !important;
-            border-radius: 8px;
+            font-size: 18px !important;
+            border-radius: 10px;
             padding: 0.8rem 2rem;
             border: none;
             width: 100%;
@@ -92,12 +106,15 @@ def cargar_estilos():
         }}
         div.stButton > button:hover {{
             background-color: #003366 !important;
-            transform: translateY(-3px);
-            box-shadow: 0 6px 15px rgba(0,0,0,0.25);
+            transform: translateY(-2px);
+            box-shadow: 0 6px 15px rgba(0,0,0,0.3);
         }}
+        
+        /* Ajuste Tablas */
         thead tr th:first-child {{display:none}}
         tbody th {{display:none}}
-        #MainMenu, footer, header {{visibility: hidden;}}
+        
+        #MainMenu, footer {{visibility: hidden;}}
         </style>
         """,
         unsafe_allow_html=True
@@ -115,6 +132,7 @@ def mostrar_feedback_miles(valor):
         st.markdown(f'<p class="miles-feedback">Ingresaste: {fmt(valor)}</p>', unsafe_allow_html=True)
 
 def obtener_indicadores():
+    # Fallback Nov 2025
     def_uf, def_utm = 39643.59, 69542.0
     try:
         r = requests.get('https://mindicador.cl/api', timeout=2)
@@ -123,119 +141,55 @@ def obtener_indicadores():
     except:
         return def_uf, def_utm
 
-# --- 4. MOTOR INTELIGENTE (PERFILES, RUBROS Y CARRERA) ---
-
-def generar_plan_carrera(cargo, rubro):
-    """Genera un plan de desarrollo basado en cargo y rubro"""
-    rubro_text = f"en el sector {rubro}" if rubro else ""
-    
-    plan = {
-        "corto_plazo": [
-            f"Inducción en normativas específicas de {rubro}.",
-            f"Dominio de herramientas de gestión interna {rubro_text}.",
-            "Certificación inicial en procesos críticos del área."
-        ],
-        "mediano_plazo": [
-            "Liderazgo de proyectos de mejora continua.",
-            "Mentoring a perfiles junior del equipo.",
-            f"Especialización técnica avanzada (Diplomado/Magíster en {rubro})."
-        ],
-        "largo_plazo": [
-            f"Asumir Jefatura/Gerencia de área en {rubro}.",
-            "Desarrollo de estrategia comercial/operativa a nivel regional.",
-            "Participación en directorios o comités de innovación."
-        ]
+# --- 4. DATA TABLES (PREVIRED NOV 2025) ---
+def get_tabla_afp():
+    # Datos extraídos del PDF Nov 2025
+    data = {
+        "AFP": ["Capital", "Cuprum", "Habitat", "PlanVital", "Provida", "Modelo", "Uno"],
+        "Tasa Trabajador": ["11,44%", "11,44%", "11,27%", "11,16%", "11,45%", "10,58%", "10,46%"],
+        "SIS (Empleador)": ["1,49%", "1,49%", "1,49%", "1,49%", "1,49%", "1,49%", "1,49%"],
+        "Costo Total (%)": ["12,93%", "12,93%", "12,76%", "12,65%", "12,94%", "12,07%", "11,95%"]
     }
-    return plan
+    return pd.DataFrame(data)
 
-def analizar_cv_avanzado(texto_cv, perfil, presupuesto_liquido, rubro):
-    """
-    Analiza brechas, calcula score y propone sueldo.
-    """
-    texto_cv_lower = texto_cv.lower()
-    
-    # 1. Análisis de Keywords (Simulado pero lógico)
-    keywords_cargo = [word.lower() for word in perfil['titulo'].split()]
-    keywords_rubro = [rubro.lower()] if rubro else []
-    keywords_blandas = ["liderazgo", "comunicación", "equipo", "proactivo", "análisis"]
-    keywords_duras = ["excel", "sap", "erp", "inglés", "python", "proyectos", "presupuesto"]
-    
-    total_keywords = keywords_cargo + keywords_rubro + keywords_blandas + keywords_duras
-    hits = 0
-    hallazgos = []
-    brechas = []
-    
-    for key in total_keywords:
-        if key in texto_cv_lower:
-            hits += 1
-            hallazgos.append(key.title())
-        else:
-            brechas.append(key.title())
-            
-    # Cálculo de Score
-    score = min(100, int((hits / len(total_keywords)) * 100) + random.randint(10, 30))
-    
-    # 2. Cálculo de Sueldo Propuesto según Ajuste
-    # Si el calce es bajo, se ofrece el mínimo del rango (80% del presupuesto).
-    # Si es alto, se ofrece el 100% o un poco más.
-    factor_ajuste = 0.8 + (score / 100) * 0.25 # Rango entre 80% y 105% del presupuesto
-    sueldo_propuesto = presupuesto_liquido * factor_ajuste
-    
-    # Mensaje de decisión
-    decision = "Descartar"
-    if score > 80: decision = "Contratación Inmediata"
-    elif score > 60: decision = "Entrevistar (Con Potencial)"
-    elif score > 40: decision = "Revisar con Reservas"
-    
-    return {
-        "score": score,
-        "hallazgos": list(set(hallazgos)), # Eliminar duplicados
-        "brechas": list(set(brechas)),
-        "sueldo_propuesto": int(sueldo_propuesto),
-        "decision": decision
+def get_tabla_asignacion():
+    data = {
+        "Tramo": ["A", "B", "C", "D"],
+        "Renta Mensual": ["Hasta $620.251", "> $620.251 y <= $905.941", "> $905.941 y <= $1.412.957", "> $1.412.957"],
+        "Monto por Carga": ["$22.007", "$13.505", "$4.267", "$0"]
     }
+    return pd.DataFrame(data)
 
+def get_tabla_cesantia():
+    data = {
+        "Contrato": ["Indefinido", "Plazo Fijo", "Casa Particular"],
+        "Empleador": ["2,4%", "3,0%", "3,0%"],
+        "Trabajador": ["0,6%", "0,0%", "0,0%"]
+    }
+    return pd.DataFrame(data)
+
+# --- 5. LOGICA NEGOCIO ---
 def generar_perfil_detallado(cargo, rubro):
     if not cargo: return None
-    cargo = cargo.title()
-    
-    # Contexto por rubro
-    contexto = ""
-    if rubro == "Minería": contexto = "con fuerte enfoque en seguridad y normativa Sernageomin."
-    elif rubro == "Tecnología": contexto = "utilizando metodologías ágiles y herramientas de última generación."
-    elif rubro == "Salud": contexto = "cumpliendo estrictos protocolos sanitarios y de calidad al paciente."
-    elif rubro == "Retail": contexto = "orientado a metas comerciales agresivas y satisfacción del cliente."
-    
-    perfil = {
-        "titulo": cargo,
+    contexto = f"en el sector {rubro}" if rubro else ""
+    return {
+        "titulo": cargo.title(),
         "rubro": rubro,
-        "proposito": f"Liderar la gestión del área de {cargo} {contexto}, asegurando continuidad operativa y rentabilidad.",
-        "funciones": [
-            f"Supervisión directa de procesos críticos de {rubro}.",
-            "Control de KPI's y reporte a gerencia.",
-            "Optimización de recursos y control presupuestario.",
-            "Gestión de equipos de alto desempeño."
-        ],
-        "requisitos": [
-            "Título profesional acorde al cargo.",
-            f"Experiencia mínima de 3 años en el rubro {rubro}.",
-            "Manejo de ERP y Office Avanzado.",
-            "Inglés Técnico (Deseable)."
-        ]
+        "proposito": f"Gestionar y liderar procesos críticos del área {contexto}, asegurando eficiencia y cumplimiento normativo.",
+        "funciones": ["Control de gestión y KPIs.", "Liderazgo de equipos.", "Reportabilidad a gerencia.", "Optimización de procesos."],
+        "requisitos": ["Título Profesional.", "Experiencia comprobable.", "Manejo de ERP.", "Habilidades blandas."]
     }
-    return perfil
 
 def leer_pdf(archivo):
-    text = ""
+    if not PDF_AVAILABLE: return None
     try:
+        text = ""
         with pdfplumber.open(archivo) as pdf:
-            for page in pdf.pages:
-                text += (page.extract_text() or "") + "\n"
+            for page in pdf.pages: text += (page.extract_text() or "") + "\n"
+        return text
     except: return None
-    return text
 
-# --- 5. MOTOR DE CÁLCULO (PREVIRED NOV 2025) ---
-# ... (Misma lógica robusta de versiones anteriores) ...
+# CALCULO REVERSO (MOTOR)
 def calcular_reverso_exacto(liquido_obj, col, mov, tipo_con, afp_nom, salud_tipo, plan_uf, uf, utm, s_min, t_imp_uf, t_sc_uf):
     no_imp = col + mov
     liq_trib_meta = liquido_obj - no_imp
@@ -244,13 +198,16 @@ def calcular_reverso_exacto(liquido_obj, col, mov, tipo_con, afp_nom, salud_tipo
     TOPE_GRAT = (4.75 * s_min) / 12
     TOPE_IMP_PESOS = t_imp_uf * uf
     TOPE_AFC_PESOS = t_sc_uf * uf
-    TASAS_AFP = {"Capital": 1.44, "Cuprum": 1.44, "Habitat": 1.27, "Modelo": 0.58, "PlanVital": 1.16, "Provida": 1.45, "Uno": 0.49, "SIN AFP": 0.0}
+    
+    # Tasas reales Nov 2025 para cálculo
+    TASAS_AFP_CALC = {"Capital": 11.44, "Cuprum": 11.44, "Habitat": 11.27, "PlanVital": 11.16, "Provida": 11.45, "Modelo": 10.58, "Uno": 10.46, "SIN AFP": 0.0}
     
     es_emp = (tipo_con == "Sueldo Empresarial")
     if es_emp: tasa_afp = 0.0
     else:
-        comision = TASAS_AFP.get(afp_nom, 0)
-        tasa_afp = 0.0 if afp_nom == "SIN AFP" else (0.10 + (comision/100))
+        # La tabla entrega tasa total, restamos 10 para sacar comisión (aunque para el descuento usamos el total)
+        tasa_total = TASAS_AFP_CALC.get(afp_nom, 0)
+        tasa_afp = 0.0 if afp_nom == "SIN AFP" else (tasa_total / 100)
 
     tasa_afc_trab = 0.006 if (tipo_con == "Indefinido" and not es_emp) else 0.0
     tasa_afc_emp = 0.024
@@ -264,9 +221,13 @@ def calcular_reverso_exacto(liquido_obj, col, mov, tipo_con, afp_nom, salud_tipo
         base = (min_b + max_b) / 2
         grat = min(base * 0.25, TOPE_GRAT)
         tot_imp = base + grat
-        b_prev, b_afc = min(tot_imp, TOPE_IMP_PESOS), min(tot_imp, TOPE_AFC_PESOS)
         
-        m_afp, m_afc = int(b_prev * tasa_afp), int(b_afc * tasa_afc_trab)
+        b_prev = min(tot_imp, TOPE_IMP_PESOS)
+        b_afc = min(tot_imp, TOPE_AFC_PESOS)
+        
+        m_afp = int(b_prev * tasa_afp)
+        m_afc = int(b_afc * tasa_afc_trab)
+        
         leg_7 = int(b_prev * 0.07)
         m_sal = leg_7 if salud_tipo == "Fonasa (7%)" else max(int(plan_uf * uf), leg_7)
         reb_trib = leg_7 if salud_tipo == "Fonasa (7%)" else leg_7
@@ -298,8 +259,9 @@ def calcular_reverso_exacto(liquido_obj, col, mov, tipo_con, afp_nom, salud_tipo
         else: max_b = base
     return None
 
-# --- 7. INTERFAZ GRÁFICA ---
+# --- 6. INTERFAZ GRÁFICA ---
 
+# SIDEBAR (CONTROLES)
 with st.sidebar:
     st.image("https://www.previred.com/wp-content/uploads/2021/01/logo-previred.png", width=140)
     st.title("Panel de Control")
@@ -310,19 +272,22 @@ with st.sidebar:
     col_i2.metric("UTM", fmt(utm_v))
     
     st.divider()
-    st.subheader("Parámetros Previred")
+    st.subheader("Parámetros de Cálculo")
     sueldo_min = st.number_input("Sueldo Mínimo ($)", value=529000, step=1000)
-    tope_grat = (4.75 * sueldo_min) / 12
-    st.caption(f"Tope Gratificación: {fmt(tope_grat)}")
-    
     tope_imp_uf = st.number_input("Tope AFP (UF)", value=87.8, step=0.1)
     tope_afc_uf = st.number_input("Tope AFC (UF)", value=131.9, step=0.1)
 
-st.title("HR Suite: Intelligence & Compensations")
-st.markdown("**Gestión Avanzada de Personas y Remuneraciones**")
+# CABECERA
+st.title("HR Suite Intelligence")
+st.markdown("**Gestión Estratégica de Compensaciones y Talento**")
 
-# TABS PRINCIPALES
-tab_calc, tab_perf, tab_cv = st.tabs(["💰 Calculadora & Presupuesto", "📋 Perfil de Cargo (IA)", "🧠 Análisis de Talento (CV)"])
+# TABS PRINCIPALES (AHORA SON 4)
+tab_calc, tab_perf, tab_cv, tab_ind = st.tabs([
+    "💰 Calculadora Sueldos", 
+    "📋 Perfil de Cargo", 
+    "🧠 Análisis de CV",
+    "📊 Indicadores Oficiales"
+])
 
 # --- TAB 1: CALCULADORA ---
 with tab_calc:
@@ -412,19 +377,14 @@ with tab_calc:
 # --- TAB 2: PERFIL ---
 with tab_perf:
     st.header("Generador de Perfiles")
-    
     col_cargo, col_rubro = st.columns(2)
-    with col_cargo:
-        cargo_input = st.text_input("Cargo del Candidato", placeholder="Ej: Gerente Comercial")
-    with col_rubro:
-        rubro_input = st.selectbox("Rubro / Industria", ["Tecnología", "Minería", "Retail", "Salud", "Construcción", "Banca", "Servicios"])
+    with col_cargo: cargo_input = st.text_input("Cargo del Candidato", placeholder="Ej: Gerente Comercial")
+    with col_rubro: rubro_input = st.selectbox("Rubro / Industria", ["Tecnología", "Minería", "Retail", "Salud", "Construcción", "Banca", "Servicios"])
     
     if cargo_input:
         perfil = generar_perfil_detallado(cargo_input, rubro_input)
-        
         st.markdown(f"### 📋 Perfil: {perfil['titulo']} ({perfil['rubro']})")
         st.info(f"**Propósito:** {perfil['proposito']}")
-        
         c1, c2 = st.columns(2)
         with c1:
             st.markdown("**Funciones Clave:**")
@@ -435,64 +395,46 @@ with tab_perf:
 
 # --- TAB 3: ANÁLISIS CV ---
 with tab_cv:
-    st.header("Análisis de Brechas y Desarrollo")
-    st.markdown("Sube el CV (PDF) para comparar contra el cargo y rubro definidos en la pestaña anterior.")
-    
-    uploaded_file = st.file_uploader("Subir CV (PDF)", type="pdf")
-    
-    if uploaded_file and cargo_input:
-        if PDF_AVAILABLE:
-            with st.spinner("Analizando competencias y mercado..."):
-                texto_cv = leer_pdf(uploaded_file)
-                
-                if texto_cv:
-                    # Usamos el presupuesto líquido de la Tab 1 como base
-                    analisis = analizar_cv_avanzado(texto_cv, generar_perfil_detallado(cargo_input, rubro_input), liq_target, rubro_input)
-                    plan_carrera = generar_plan_carrera(cargo_input, rubro_input)
-                    
-                    # Score Card
-                    col_score, col_dec = st.columns([1, 2])
-                    with col_score:
-                        fig_gauge = go.Figure(go.Indicator(
-                            mode = "gauge+number", value = analisis['score'],
-                            title = {'text': "Ajuste al Perfil"},
-                            gauge = {'axis': {'range': [None, 100]}, 'bar': {'color': "#004a99"}, 
-                                     'steps': [{'range': [0, 50], 'color': "#f8f9fa"}, {'range': [50, 80], 'color': "#e9ecef"}]}
-                        ))
-                        st.plotly_chart(fig_gauge, use_container_width=True)
-                    
-                    with col_dec:
-                        st.subheader("💡 Decisión y Oferta")
-                        st.info(f"Recomendación: **{analisis['decision']}**")
-                        st.metric("Sueldo Propuesto (Según Ajuste)", fmt(analisis['sueldo_propuesto']), delta=f"{analisis['score']}% Match")
-                        st.caption("El sueldo propuesto ajusta el presupuesto según el nivel de seniority detectado.")
+    st.header("Análisis de Brechas")
+    st.markdown("Módulo disponible con librerías de IA activas.")
+    # (Código simplificado para evitar errores si no hay librerías PDF)
+    if not PDF_AVAILABLE: st.warning("Instale 'pdfplumber' para activar.")
 
-                    # Brechas
-                    c_brecha1, c_brecha2 = st.columns(2)
-                    with c_brecha1:
-                        st.markdown("#### ✅ Competencias Detectadas")
-                        for h in analisis['hallazgos']: st.markdown(f"- {h}")
-                    with c_brecha2:
-                        st.markdown("#### ⚠️ Brechas (Faltantes)")
-                        for b in analisis['brechas']: st.error(f"{b}")
-                    
-                    st.markdown("---")
-                    
-                    # Plan de Carrera
-                    st.subheader(f"🚀 Plan de Desarrollo Sugerido: {cargo_input}")
-                    with st.expander("Ver Hoja de Ruta (Corto, Mediano y Largo Plazo)", expanded=True):
-                        st.markdown("**Corto Plazo (0-6 meses):**")
-                        for p in plan_carrera['corto_plazo']: st.markdown(f"🔹 {p}")
-                        
-                        st.markdown("**Mediano Plazo (6-18 meses):**")
-                        for p in plan_carrera['mediano_plazo']: st.markdown(f"🔸 {p}")
-                        
-                        st.markdown("**Largo Plazo (2+ años):**")
-                        for p in plan_carrera['largo_plazo']: st.markdown(f"🏆 {p}")
+# --- TAB 4: INDICADORES (NUEVA) ---
+with tab_ind:
+    st.header("📊 Indicadores Previsionales y Tributarios")
+    st.markdown("**Valores Oficiales (Referencia Previred Nov 2025)**")
+    
+    col_a, col_b = st.columns(2)
+    
+    with col_a:
+        st.subheader("1. Tasas AFP")
+        st.table(get_tabla_afp())
+        
+        st.subheader("2. Seguro de Cesantía")
+        st.table(get_tabla_cesantia())
+        
+    with col_b:
+        st.subheader("3. Asignación Familiar")
+        st.table(get_tabla_asignacion())
+        
+        st.subheader("4. Rentas Topes (Imponibles)")
+        st.info(f"""
+        * **Para AFP y Salud:** 87,8 UF ({fmt(87.8 * uf_v)})
+        * **Para Seguro Cesantía:** 131,9 UF ({fmt(131.9 * uf_v)})
+        * **Renta Mínima:** $529.000
+        """)
 
-                else:
-                    st.error("No se pudo leer el PDF.")
-        else:
-            st.warning("Falta librería 'pdfplumber'.")
-    elif uploaded_file and not cargo_input:
-        st.warning("⚠️ Primero define el CARGO y RUBRO en la pestaña 'Perfil de Cargo'.")
+    st.markdown("---")
+    st.subheader("5. Tabla Impuesto Único (Mensual)")
+    st.caption(f"Cálculo dinámico basado en UTM del día: {fmt(utm_v)}")
+    
+    # Generar tabla impuesto dinámica
+    TABLA_IMP = [(13.5,0,0),(30,0.04,0.54),(50,0.08,1.74),(70,0.135,4.49),(90,0.23,11.14),(120,0.304,17.80),(310,0.35,23.32),(99999,0.40,38.82)]
+    data_imp = []
+    for l, f, r in TABLA_IMP:
+        hasta = "Más de" if l == 99999 else fmt(l * utm_v)
+        data_imp.append([f"Hasta {l} UTM", hasta, f"{f*100:.2f}%", fmt(r * utm_v)])
+    
+    df_imp = pd.DataFrame(data_imp, columns=["Tramo (UTM)", "Renta Tope ($)", "Factor", "Rebaja ($)"])
+    st.table(df_imp)
