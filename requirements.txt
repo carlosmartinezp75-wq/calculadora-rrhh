@@ -3,6 +3,5 @@ pandas
 requests
 plotly
 pdfplumber
-openai
 fpdf
 python-docx
