@@ -7,12 +7,12 @@ import io
 import zipfile
 import tempfile
 import random
-from datetime import datetime, date
+from datetime import datetime, date, timedelta
 import plotly.graph_objects as go
 import plotly.express as px
 
 # =============================================================================
-# 0. VALIDACIÓN DE ENTORNO
+# 0. VALIDACIÓN DE LIBRERÍAS Y ENTORNO
 # =============================================================================
 try:
     import pdfplumber
@@ -25,30 +25,35 @@ except ImportError:
     LIBRARIES_OK = False
 
 # =============================================================================
-# 1. CONFIGURACIÓN E INICIALIZACIÓN
+# 1. CONFIGURACIÓN DEL SISTEMA
 # =============================================================================
-st.set_page_config(page_title="HR Suite Ultimate V35", page_icon="💎", layout="wide")
+st.set_page_config(
+    page_title="HR Suite Ultimate V36",
+    page_icon="🏢",
+    layout="wide",
+    initial_sidebar_state="expanded"
+)
 
-# Inicialización de Estado (Persistencia de Datos)
+# Inicialización de Estado (Persistencia de Datos de Sesión)
 if 'empresa' not in st.session_state:
     st.session_state.empresa = {
         "nombre": "", "rut": "", "direccion": "", 
-        "rep_nombre": "", "rep_rut": "", "ciudad": "Santiago", "giro": "Servicios Profesionales"
+        "rep_nombre": "", "rep_rut": "", "ciudad": "Santiago", "giro": "Servicios"
     }
 if 'trabajador' not in st.session_state:
     st.session_state.trabajador = {
         "nombre": "", "rut": "", "direccion": "", 
-        "nacionalidad": "Chilena", "civil": "Soltero", "nacimiento": date(1990,1,1),
-        "cargo": "", "fecha_ingreso": date.today()
+        "nacionalidad": "Chilena", "civil": "Soltero", "nacimiento": date(1990,1,1)
     }
 if 'calculo_actual' not in st.session_state: st.session_state.calculo_actual = None
 if 'perfil_actual' not in st.session_state: st.session_state.perfil_actual = None
 if 'logo_bytes' not in st.session_state: st.session_state.logo_bytes = None
 
 # =============================================================================
-# 2. ESTILOS VISUALES (CSS CORPORATIVO)
+# 2. SISTEMA DE DISEÑO VISUAL (CSS AVANZADO)
 # =============================================================================
-def cargar_estilos():
+def cargar_estilos_corporativos():
+    """Carga los estilos CSS y el fondo de pantalla."""
     nombres = ['fondo.png', 'fondo.jpg', 'fondo_marca.png']
     img = next((n for n in nombres if os.path.exists(n)), None)
     
@@ -56,7 +61,14 @@ def cargar_estilos():
     if img:
         try:
             with open(img, "rb") as f: b64 = base64.b64encode(f.read()).decode()
-            css_fondo = f"""[data-testid="stAppViewContainer"] {{background-image: url("data:image/png;base64,{b64}"); background-size: cover;}}"""
+            css_fondo = f"""
+            [data-testid="stAppViewContainer"] {{
+                background-image: url("data:image/png;base64,{b64}");
+                background-size: cover;
+                background-position: center;
+                background-attachment: fixed;
+            }}
+            """
         except: pass
     else:
         css_fondo = """[data-testid="stAppViewContainer"] {background: linear-gradient(135deg, #fdfbfb 0%, #ebedee 100%);}"""
@@ -64,111 +76,252 @@ def cargar_estilos():
     st.markdown(f"""
         <style>
         {css_fondo}
-        .block-container {{background-color: rgba(255, 255, 255, 0.98); padding: 2.5rem; border-radius: 15px; box-shadow: 0 10px 40px rgba(0,0,0,0.1);}}
-        h1, h2, h3, h4 {{color: #004a99 !important; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; font-weight: 800;}}
-        .stButton>button {{background-color: #004a99 !important; color: white !important; font-weight: bold; border-radius: 8px; width: 100%; height: 3rem; text-transform: uppercase;}}
-        .stButton>button:hover {{background-color: #003366 !important; transform: translateY(-2px);}}
         
-        /* Liquidación Visual */
-        .liq-box {{border: 1px solid #ccc; padding: 25px; background: #fff; font-family: 'Courier New', monospace; margin-top: 15px; box-shadow: 5px 5px 15px #eee;}}
+        .block-container {{
+            background-color: rgba(255, 255, 255, 0.98); 
+            padding: 2.5rem; 
+            border-radius: 16px; 
+            box-shadow: 0 10px 40px rgba(0,0,0,0.15);
+        }}
+        
+        h1, h2, h3, h4 {{color: #004a99 !important; font-family: 'Segoe UI', sans-serif; font-weight: 800;}}
+        p, label, li, span {{color: #003366 !important; font-weight: 500;}}
+        
+        /* Botones Principales */
+        .stButton>button {{
+            background-color: #004a99 !important;
+            color: white !important;
+            font-weight: bold;
+            border-radius: 8px;
+            width: 100%;
+            height: 3.5rem;
+            text-transform: uppercase;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+            transition: all 0.3s ease;
+        }}
+        .stButton>button:hover {{
+            background-color: #003366 !important;
+            transform: translateY(-2px);
+            box-shadow: 0 6px 12px rgba(0,0,0,0.2);
+        }}
+        
+        /* Visualización Liquidación */
+        .liq-box {{
+            border: 1px solid #ccc; padding: 25px; background: #fff; font-family: 'Courier New', monospace;
+            box-shadow: 5px 5px 15px rgba(0,0,0,0.05); margin-top: 20px;
+        }}
         .liq-header {{text-align: center; border-bottom: 2px solid #000; padding-bottom: 10px; margin-bottom: 15px; font-weight: bold;}}
         .liq-row {{display: flex; justify-content: space-between; border-bottom: 1px dashed #ddd; padding: 4px 0;}}
-        .liq-total {{background: #e3f2fd; padding: 15px; font-weight: bold; font-size: 1.3em; border: 2px solid #004a99; margin-top: 20px; color: #004a99;}}
+        .liq-total {{background: #e3f2fd; padding: 15px; font-weight: bold; font-size: 1.3em; border: 2px solid #004a99; margin-top: 20px; color: #004a99; text-align: right;}}
         
         .miles-feedback {{font-size: 0.8rem; color: #2e7d32; font-weight: bold; margin-top: -10px;}}
         
-        /* Tablas */
-        thead tr th:first-child {{display:none}}
-        tbody th {{display:none}}
+        /* Ocultar elementos nativos */
+        #MainMenu, footer {{visibility: hidden;}}
         </style>
         """, unsafe_allow_html=True)
 
-cargar_estilos()
+cargar_estilos_corporativos()
 
 # =============================================================================
 # 3. FUNCIONES UTILITARIAS Y DATA
 # =============================================================================
-def fmt(valor): 
-    if pd.isna(valor) or valor == "": return "$0"
+
+def fmt(valor):
+    """Formatea números como moneda CLP ($1.000.000)"""
+    if valor is None or pd.isna(valor): return "$0"
     try: return "${:,.0f}".format(float(valor)).replace(",", ".")
     except: return str(valor)
 
 def mostrar_miles(valor): 
+    """Muestra feedback visual debajo del input numérico"""
     if valor > 0: st.markdown(f'<p class="miles-feedback">✅ Ingresaste: {fmt(valor)}</p>', unsafe_allow_html=True)
 
 def obtener_indicadores():
-    # Valores fijos Nov 2025 para estabilidad
-    return 39643.59, 69542.0
+    """Obtiene UF/UTM de la API o usa valores de respaldo"""
+    def_uf, def_utm = 39643.59, 69542.0
+    try:
+        r = requests.get('https://mindicador.cl/api', timeout=2)
+        d = r.json()
+        return float(d['uf']['valor']), float(d['utm']['valor'])
+    except: return def_uf, def_utm
 
 # =============================================================================
-# 4. MOTORES DE INTELIGENCIA DE NEGOCIO
+# 4. GENERADORES DE ARCHIVOS (EXCEL / PDF / WORD)
 # =============================================================================
 
-def generar_perfil_word_style(cargo, rubro):
-    """Genera perfil detallado basado en el formato Word subido"""
+def generar_plantilla_excel():
+    """Genera el archivo Excel base para la carga masiva."""
+    df = pd.DataFrame(columns=[
+        "TIPO_DOCUMENTO", "NOMBRE_TRABAJADOR", "RUT_TRABAJADOR", "CARGO", 
+        "SUELDO_BASE", "FECHA_INICIO", "EMAIL"
+    ])
+    # Agregamos una fila de ejemplo
+    df.loc[0] = ["Contrato", "Juan Perez", "12.345.678-9", "Analista", 800000, "2025-01-01", "juan@empresa.com"]
+    
+    buffer = io.BytesIO()
+    with pd.ExcelWriter(buffer, engine='xlsxwriter') as writer:
+        df.to_excel(writer, index=False, sheet_name='Plantilla_Carga')
+    buffer.seek(0)
+    return buffer
+
+def generar_pdf_liquidacion(res, empresa, trabajador):
+    if not LIBRARIES_OK: return None
+    pdf = FPDF()
+    pdf.add_page()
+    
+    # Logo
+    if st.session_state.logo_bytes:
+        with tempfile.NamedTemporaryFile(delete=False, suffix=".png") as tmp:
+            tmp.write(st.session_state.logo_bytes)
+            tmp_path = tmp.name
+        try: pdf.image(tmp_path, 10, 8, 30)
+        except: pass
+
+    pdf.set_font("Arial", 'B', 14); pdf.cell(0, 15, "LIQUIDACION DE SUELDO", 0, 1, 'C')
+    pdf.ln(10)
+    
+    # Datos
+    pdf.set_font("Arial", '', 10)
+    pdf.cell(0, 6, f"Empresa: {empresa.get('nombre','S/N')} | RUT: {empresa.get('rut','S/R')}", 0, 1)
+    pdf.cell(0, 6, f"Trabajador: {trabajador.get('nombre','S/N')} | RUT: {trabajador.get('rut','S/R')}", 0, 1)
+    pdf.cell(0, 6, f"Fecha: {datetime.now().strftime('%d/%m/%Y')}", 0, 1)
+    pdf.ln(5)
+    
+    # Tabla
+    pdf.set_fill_color(240, 240, 240)
+    pdf.set_font("Arial", 'B', 10)
+    pdf.cell(95, 8, "HABERES", 1, 0, 'C', 1); pdf.cell(95, 8, "DESCUENTOS", 1, 1, 'C', 1)
+    pdf.set_font("Arial", '', 10)
+    
+    items_h = [("Base", res['Sueldo Base']), ("Gratificacion", res['Gratificación']), ("No Imponibles", res['No Imponibles'])]
+    items_d = [("AFP", res['AFP']), ("Salud", res['Salud_Total']), ("Cesantia", res['AFC']), ("Impuesto", res['Impuesto'])]
+    
+    for i in range(max(len(items_h), len(items_d))):
+        ht, hv = items_h[i] if i < len(items_h) else ("", "")
+        dt, dv = items_d[i] if i < len(items_d) else ("", "")
+        pdf.cell(60, 6, ht, 'L'); pdf.cell(35, 6, fmt(hv) if hv!="" else "", 'R')
+        pdf.cell(60, 6, dt, 'L'); pdf.cell(35, 6, fmt(dv) if dv!="" else "", 'R', 1)
+    
+    pdf.ln(5)
+    pdf.set_font("Arial", 'B', 12)
+    pdf.cell(130, 10, "A PAGAR:", 1, 0, 'R'); pdf.cell(60, 10, fmt(res['LÍQUIDO_FINAL']), 1, 1, 'C')
+    
+    return pdf.output(dest='S').encode('latin-1')
+
+def crear_documento_word(tipo_doc, datos, empresa):
+    """Generador universal de documentos Word."""
+    doc = Document()
+    style = doc.styles['Normal']; style.font.name = 'Arial'; style.font.size = Pt(11)
+    fecha = datetime.now().strftime("%d de %B de %Y")
+    
+    doc.add_heading(tipo_doc.upper(), 0).alignment = WD_ALIGN_PARAGRAPH.CENTER
+    doc.add_paragraph(f"Fecha: {fecha}").alignment = WD_ALIGN_PARAGRAPH.RIGHT
+    
+    # Extracción segura de datos
+    t_nom = str(datos.get('NOMBRE_TRABAJADOR', datos.get('nombre', '________')))
+    t_rut = str(datos.get('RUT_TRABAJADOR', datos.get('rut', '________')))
+    t_cargo = str(datos.get('CARGO', datos.get('cargo', '________')))
+    
+    intro = f"""En {empresa.get('ciudad','Santiago')}, a {fecha}, entre "{empresa.get('nombre','EMPRESA')}", RUT {empresa.get('rut','___')}, representada por {empresa.get('rep_nombre','REPRESENTANTE')}, en adelante EMPLEADOR; y {t_nom}, RUT {t_rut}, en adelante TRABAJADOR, se acuerda:"""
+    doc.add_paragraph(intro)
+    
+    if "CONTRATO" in tipo_doc.upper():
+        clausulas = [
+            ("PRIMERO:", f"El Trabajador se desempeñará como {t_cargo}."),
+            ("SEGUNDO:", f"Sueldo Base pactado. Gratificación Legal tope 4.75 IMM."),
+            ("TERCERO:", "Jornada de 44 horas semanales (Ley 40 Horas)."),
+            ("CUARTO:", "Confidencialidad y Propiedad Intelectual.")
+        ]
+        for k, v in clausulas:
+            p = doc.add_paragraph(); p.add_run(k).bold=True; p.add_run(f" {v}")
+            
+    elif "FINIQUITO" in tipo_doc.upper():
+        doc.add_paragraph(f"PRIMERO: Término de relación laboral por causal legal.")
+        doc.add_paragraph(f"SEGUNDO: El trabajador declara recibir a su entera conformidad el pago de su liquidación.")
+    
+    doc.add_paragraph("\n\n\n__________________\nFIRMA EMPLEADOR\n\n__________________\nFIRMA TRABAJADOR")
+    
+    bio = io.BytesIO()
+    doc.save(bio)
+    return bio
+
+def procesar_lote_masivo(df, empresa_data):
+    """Procesa el Excel y devuelve un ZIP con los documentos."""
+    zip_buffer = io.BytesIO()
+    reporte = []
+    
+    with zipfile.ZipFile(zip_buffer, "w") as zf:
+        for idx, row in df.iterrows():
+            try:
+                tipo = str(row.get('TIPO_DOCUMENTO', 'Contrato'))
+                nombre = str(row.get('NOMBRE_TRABAJADOR', f'Trab_{idx}'))
+                
+                # Generar DOCX
+                docx = crear_documento_word(tipo, row, empresa_data)
+                
+                # Añadir al ZIP
+                zf.writestr(f"{tipo}_{nombre}.docx", docx.getvalue())
+            except Exception as e:
+                reporte.append(f"Fila {idx}: {str(e)}")
+                
+    zip_buffer.seek(0)
+    return zip_buffer, reporte
+
+# =============================================================================
+# 5. MOTORES DE INTELIGENCIA DE NEGOCIO
+# =============================================================================
+
+def generar_perfil_robusto(cargo, rubro):
     if not cargo: return None
     
-    # Diccionarios de Conocimiento por Rubro
-    skills_map = {
-        "Tecnología": ["Cloud Computing (AWS/Azure)", "Scrum/Agile", "Python/SQL", "Cybersecurity"],
-        "Minería": ["Normativa Sernageomin", "Gestión de Activos", "Seguridad Industrial", "Lean Mining"],
-        "Retail": ["E-commerce", "Logística Última Milla", "Customer Experience", "Visual Merchandising"],
-        "Salud": ["Gestión Clínica", "Calidad Acreditación", "Bioestadística", "Normativa Minsal"],
-        "Construcción": ["Autocad/BIM", "Control de Costos", "Prevención de Riesgos", "Gestión de Obras"],
-        "Servicios": ["Atención Cliente", "SLA", "Gestión Procesos", "Ventas Consultivas"]
+    # Base de conocimientos por industria
+    rubro_data = {
+        "Minería": ["Seguridad Sernageomin", "Gestión de Activos", "Turnos 7x7", "ISO 14001"],
+        "Tecnología": ["Cloud Computing", "Agile/Scrum", "DevOps", "Python/SQL"],
+        "Retail": ["Customer Experience", "Logística", "E-commerce", "Visual Merchandising"],
+        "Salud": ["Gestión Clínica", "Protocolos Minsal", "Acreditación", "Bioestadística"],
+        "Construcción": ["BIM", "Last Planner", "Control Costos", "Prevención Riesgos"],
+        "Banca": ["Riesgo Financiero", "Compliance", "Normativa CMF", "Inversiones"]
     }
     
-    hard_skills = skills_map.get(rubro, ["Gestión de Proyectos", "Excel Avanzado", "ERP", "Inglés"])
+    skills = rubro_data.get(rubro, ["Gestión de Proyectos", "Excel Avanzado", "Liderazgo", "Inglés"])
     
     return {
         "titulo": cargo.title(),
-        "objetivo": f"Coordinar, gestionar y controlar los procesos críticos del área de {cargo} en el sector {rubro}, asegurando eficiencia y cumplimiento normativo.",
+        "objetivo": f"Dirigir y controlar las operaciones de {cargo} en el sector {rubro}, asegurando KPIs y normativa.",
         "dependencia": "Gerencia General / Gerencia de Área",
-        "nivel_resp": "Jefatura / Supervisión Senior",
+        "nivel": "Profesional Senior / Jefatura",
         "funciones": [
-            "Coordinación y supervisión de equipos de trabajo multidisciplinarios.",
-            "Control presupuestario y gestión eficiente de recursos (CAPEX/OPEX).",
-            "Reportabilidad de estados de avance y KPIs críticos a la Gerencia.",
-            "Aseguramiento de la calidad y cumplimiento de normativa vigente.",
-            "Optimización continua de procedimientos para mejorar la productividad."
+            "Planificación estratégica y operativa del área.",
+            "Control presupuestario (CAPEX/OPEX) y gestión de recursos.",
+            "Liderazgo de equipos multidisciplinarios.",
+            "Reportabilidad a Gerencia y stakeholders.",
+            "Mejora continua de procesos críticos."
         ],
-        "requisitos_obj": [
-            "Título Profesional Universitario afín al cargo.",
-            f"Experiencia mínima de 4-5 años en empresas del rubro {rubro}.",
-            "Manejo avanzado de herramientas ERP y Office.",
-            f"Conocimientos específicos: {', '.join(hard_skills)}."
+        "requisitos_duros": [
+            "Título Profesional Universitario.",
+            f"Experiencia mínima de 4-5 años en rubro {rubro}.",
+            "Manejo de ERP (SAP/Oracle) y Office Avanzado.",
+            f"Conocimientos: {', '.join(skills[:2])}."
         ],
-        "competencias": ["Liderazgo Transformacional", "Autonomía", "Orientación al Resultado", "Trabajo bajo presión", "Visión Estratégica"],
-        "condiciones": [
-            "Jornada: Art. 22 o 44 Horas (según rol).",
-            "Lugar: Oficina Central / Terreno / Híbrido.",
-            "Disponibilidad para viajes dentro y fuera del país."
-        ],
-        "fisicos": "Salud compatible con el cargo. Capacidad para trabajo en altura geográfica (si aplica)."
+        "competencias": ["Liderazgo Transformacional", "Visión Estratégica", "Negociación", "Resiliencia"],
+        "condiciones": ["Jornada Art. 22", "Modalidad Híbrida/Presencial", "Seguro Complementario"]
     }
 
 def motor_analisis_cv(texto, perfil):
-    """Analiza match entre CV y Perfil"""
-    kws = [k.lower() for k in perfil['competencias'] + perfil['requisitos_obj']]
+    # Análisis semántico simulado
+    kws = [k.lower() for k in perfil['competencias'] + perfil['requisitos_duros']]
     txt = texto.lower()
     
-    enc = list(set([k.title() for k in kws if k.split()[0] in txt])) 
+    enc = list(set([k.title() for k in kws if k.split()[0] in txt]))
     fal = list(set([k.title() for k in kws if k.split()[0] not in txt]))
     
     score = int((len(enc) / len(kws)) * 100) + random.randint(10, 20)
-    score = min(98, max(15, score))
-    
+    score = min(99, max(15, score))
     nivel = "Senior" if score > 75 else "Semi-Senior" if score > 45 else "Junior"
     
-    return {"score": score, "nivel": nivel, "encontradas": enc, "faltantes": fal}
-
-def generar_plan_carrera(cargo, rubro):
-    """Genera hoja de ruta de desarrollo"""
-    return {
-        "corto": ["Inducción corporativa y normativa.", "Certificación en herramientas internas.", "Cumplimiento de metas iniciales."],
-        "mediano": ["Liderazgo de proyectos transversales.", f"Especialización técnica en {rubro}.", "Mentoring a pares."],
-        "largo": ["Asumir Jefatura/Gerencia de Área.", "Participación en comité estratégico.", "Desarrollo de nuevos negocios."]
-    }
+    return score, enc, fal, nivel
 
 def leer_pdf(archivo):
     if not LIBRARIES_OK: return None
@@ -180,7 +333,7 @@ def leer_pdf(archivo):
     except: return None
 
 # =============================================================================
-# 5. MOTORES FINANCIEROS (CÁLCULO EXACTO)
+# 6. CÁLCULO FINANCIERO (LÓGICA ISAPRE TARGET)
 # =============================================================================
 
 def calcular_nomina_reversa(liquido_obj, col, mov, contrato, afp_n, salud_t, plan_uf, uf, utm, s_min):
@@ -205,21 +358,20 @@ def calcular_nomina_reversa(liquido_obj, col, mov, contrato, afp_n, salud_t, pla
         b_afc = min(tot_imp, 131.9*uf)
         
         m_afp = int(b_prev * tasa_afp)
-        m_afc_t = int(b_afc * tasa_afc_trab)
+        m_afc = int(b_afc * tasa_afc_trab)
         
-        # TARGET ISAPRE: Usamos 7% legal para encontrar el bruto objetivo
+        # 7% Legal Base
         legal_7 = int(b_prev * 0.07)
-        base_trib = max(0, tot_imp - m_afp - legal_7 - m_afc_t)
         
+        base_trib = max(0, tot_imp - m_afp - legal_7 - m_afc)
         imp = 0
         if base_trib > 13.5*utm: imp = int(base_trib*0.04)
         if base_trib > 30*utm: imp = int((base_trib*0.08) - (1.74*utm))
         imp = max(0, imp)
         
-        liq_calc_base = tot_imp - m_afp - legal_7 - m_afc_t - imp
+        liq_calc = tot_imp - m_afp - legal_7 - m_afc - imp
         
-        if abs(liq_calc_base - liq_meta) < 500:
-            # APLICAR PLAN REAL ISAPRE
+        if abs(liq_calc - liq_meta) < 500:
             salud_real = legal_7
             adicional = 0
             warning = None
@@ -231,140 +383,27 @@ def calcular_nomina_reversa(liquido_obj, col, mov, contrato, afp_n, salud_t, pla
                     adicional = plan_pesos - legal_7
                     warning = f"⚠️ Plan Isapre excede el 7%. Líquido baja en {fmt(adicional)}."
             
-            liq_final = tot_imp - m_afp - salud_real - m_afc_t - imp + no_imp
-            ap_sis = int(b_prev*0.0149)
-            ap_mut = int(b_prev*0.0093)
-            ap_afc_e = int(b_afc*tasa_afc_emp)
+            liq_final = tot_imp - m_afp - salud_real - m_afc - imp + no_imp
+            ap_sis, ap_mut, ap_afc_e = int(b_prev*0.0149), int(b_prev*0.0093), int(b_afc*tasa_afc_emp)
             
             return {
                 "Sueldo Base": int(base), "Gratificación": int(grat), "Total Imponible": int(tot_imp),
-                "No Imponibles": int(no_imp), "LÍQUIDO_OBJETIVO": int(liquido_obj),
-                "LÍQUIDO_FINAL": int(liq_final),
+                "No Imponibles": int(no_imp), "LÍQUIDO": int(liq_final),
                 "AFP": m_afp, "Salud_Legal": legal_7, "Adicional_Salud": adicional, "Salud_Total": salud_real,
-                "AFC": m_afc_t, "Impuesto": imp, "Total Descuentos": m_afp + salud_real + m_afc_t + imp,
-                "Aportes Empresa": ap_sis + ap_mut + ap_afc_e, 
-                "COSTO TOTAL": int(tot_imp+no_imp+ap_sis+ap_mut+ap_afc_e),
+                "AFC": m_afc, "Impuesto": imp, "Total Descuentos": m_afp + salud_real + m_afc + imp,
+                "Aportes Empresa": ap_sis + ap_mut + ap_afc_e, "COSTO TOTAL": int(tot_imp+no_imp+ap_sis+ap_mut+ap_afc_e),
                 "Warning": warning
             }
             break
-        elif liq_calc_base < liq_meta: min_b = base
+        elif liq_calc < liq_meta: min_b = base
         else: max_b = base
     return None
 
-def calcular_finiquito(f_ini, f_fin, sueldo_base, causal, vac_pend):
-    dias = (f_fin - f_ini).days
-    anos = int(dias / 365.25)
-    if (dias/365.25 - anos)*12 >= 6: anos += 1
-    anos = min(anos, 11)
-    
-    tope_uf = 90 * 39643.59
-    base = min(sueldo_base, tope_uf)
-    
-    indem = int(base * anos) if causal == "Necesidades de la Empresa" else 0
-    aviso = int(base) if causal in ["Necesidades de la Empresa", "Desahucio"] else 0
-    vacas = int(vac_pend * 1.25 * (sueldo_base/30))
-    
-    return {"indem_anos": indem, "aviso": aviso, "vacaciones": vacas, "total": indem+aviso+vacas}
-
 # =============================================================================
-# 6. GENERADORES DOCUMENTALES (PDF/WORD/ZIP)
+# 7. INTERFAZ GRÁFICA PRINCIPAL
 # =============================================================================
 
-def generar_pdf_liquidacion(res, empresa, trabajador):
-    if not LIBRARIES_OK: return None
-    pdf = FPDF()
-    pdf.add_page()
-    
-    if st.session_state.logo_bytes:
-        with tempfile.NamedTemporaryFile(delete=False, suffix=".png") as tmp:
-            tmp.write(st.session_state.logo_bytes)
-            tmp_path = tmp.name
-        try: pdf.image(tmp_path, 10, 8, 30)
-        except: pass
-
-    pdf.set_font("Arial", 'B', 14); pdf.cell(0, 15, "LIQUIDACION DE SUELDO", 0, 1, 'C')
-    pdf.ln(5)
-    pdf.set_font("Arial", '', 10)
-    pdf.cell(0, 6, f"Empresa: {empresa['nombre']} | RUT: {empresa['rut']}", 0, 1)
-    pdf.cell(0, 6, f"Trabajador: {trabajador['nombre']} | RUT: {trabajador['rut']}", 0, 1)
-    pdf.ln(5)
-    
-    # Tabla
-    pdf.set_fill_color(240, 240, 240)
-    pdf.cell(95, 8, "HABERES", 1, 0, 'C', 1); pdf.cell(95, 8, "DESCUENTOS", 1, 1, 'C', 1)
-    
-    h = [("Base", res['Sueldo Base']), ("Gratificacion", res['Gratificación']), ("No Imp.", res['No Imponibles'])]
-    d = [("AFP", res['AFP']), ("Salud", res['Salud_Total']), ("AFC", res['AFC']), ("Impuesto", res['Impuesto'])]
-    
-    for i in range(max(len(h), len(d))):
-        ht, hv = h[i] if i < len(h) else ("", "")
-        dt, dv = d[i] if i < len(d) else ("", "")
-        pdf.cell(60, 6, ht, 'L'); pdf.cell(35, 6, fmt(hv) if hv!="" else "", 'R')
-        pdf.cell(60, 6, dt, 'L'); pdf.cell(35, 6, fmt(dv) if dv!="" else "", 'R', 1)
-    
-    pdf.ln(5)
-    pdf.set_font("Arial", 'B', 12)
-    pdf.cell(130, 10, "A PAGAR:", 1, 0, 'R'); pdf.cell(60, 10, fmt(res['LÍQUIDO_FINAL']), 1, 1, 'C')
-    return pdf.output(dest='S').encode('latin-1')
-
-def crear_documento_word(tipo_doc, datos_fila, empresa_data):
-    # Generador Genérico para Masivo e Individual
-    doc = Document()
-    style = doc.styles['Normal']; style.font.name = 'Arial'; style.font.size = Pt(11)
-    fecha = datetime.now().strftime("%d de %B de %Y")
-    
-    doc.add_heading(tipo_doc.upper(), 0).alignment = WD_ALIGN_PARAGRAPH.CENTER
-    doc.add_paragraph(f"Fecha: {fecha}").alignment = WD_ALIGN_PARAGRAPH.RIGHT
-    
-    # Datos seguros
-    def g(k): return str(datos_fila.get(k, "________"))
-    
-    intro = f"""En {empresa_data['ciudad']}, a {fecha}, entre "{empresa_data['nombre']}", RUT {empresa_data['rut']}, representada por {empresa_data['rep_nombre']}, en adelante EMPLEADOR; y {g('nombre')}, RUT {g('rut')}, en adelante TRABAJADOR, se acuerda:"""
-    doc.add_paragraph(intro)
-    
-    if "CONTRATO" in tipo_doc.upper():
-        doc.add_paragraph(f"PRIMERO: El trabajador se desempeñará como {g('cargo')}.")
-        doc.add_paragraph(f"SEGUNDO: Sueldo Base {fmt(g('sueldo'))}. Gratificación Legal tope 4.75 IMM.")
-        doc.add_paragraph("TERCERO: Jornada de 44 horas semanales. (Ley 40 Horas)")
-        doc.add_paragraph("CUARTO: Obligación de confidencialidad y propiedad intelectual.")
-    
-    elif "FINIQUITO" in tipo_doc.upper():
-        doc.add_paragraph(f"PRIMERO: Las partes ponen término al contrato por causal: {g('causal')}.")
-        doc.add_paragraph(f"SEGUNDO: El empleador paga indemnización por {fmt(g('total'))}.")
-        
-    doc.add_paragraph("\n\n\n__________________\nFIRMA EMPLEADOR\n\n__________________\nFIRMA TRABAJADOR")
-    
-    bio = io.BytesIO()
-    doc.save(bio)
-    return bio
-
-def procesar_lote_excel(df, empresa_data):
-    zip_buffer = io.BytesIO()
-    reporte = []
-    with zipfile.ZipFile(zip_buffer, "w") as zf:
-        for idx, row in df.iterrows():
-            try:
-                tipo = str(row.get('TIPO_DOCUMENTO', 'Contrato'))
-                nombre = str(row.get('NOMBRE', f'Trabajador_{idx}'))
-                # Lógica de cálculo interna si es finiquito
-                if "FINIQUITO" in tipo.upper():
-                    # Simulación cálculo rápido para masivo
-                    base = float(row.get('SUELDO', 0))
-                    fin = calcular_finiquito(date(2020,1,1), date.today(), base, "Necesidades", 0)
-                    row['total'] = fin['total']
-                
-                docx = crear_documento_word(tipo, row, empresa_data)
-                zf.writestr(f"{tipo}_{nombre}.docx", docx.getvalue())
-            except Exception as e:
-                reporte.append(f"Error fila {idx}: {e}")
-    zip_buffer.seek(0)
-    return zip_buffer, reporte
-
-# =============================================================================
-# 7. INTERFAZ GRÁFICA (TABS)
-# =============================================================================
-
-# SIDEBAR
+# SIDEBAR: DATOS MAESTROS
 with st.sidebar:
     st.image("https://www.previred.com/wp-content/uploads/2021/01/logo-previred.png", width=120)
     
@@ -372,7 +411,7 @@ with st.sidebar:
     upl_logo = st.file_uploader("Logo Empresa", type=["png", "jpg"])
     if upl_logo: st.session_state.logo_bytes = upl_logo.read()
     
-    # 2. Datos Empresa
+    # 2. Datos Empresa (Persistentes)
     with st.expander("🏢 Datos Empresa (Fijo)", expanded=False):
         st.session_state.empresa['rut'] = st.text_input("RUT Empresa", st.session_state.empresa['rut'])
         st.session_state.empresa['nombre'] = st.text_input("Razón Social", st.session_state.empresa['nombre'])
@@ -387,44 +426,55 @@ with st.sidebar:
         st.session_state.trabajador['nombre'] = st.text_input("Nombre", st.session_state.trabajador['nombre'])
         st.session_state.trabajador['rut'] = st.text_input("RUT", st.session_state.trabajador['rut'])
         st.session_state.trabajador['direccion'] = st.text_input("Domicilio", st.session_state.trabajador['direccion'])
-        st.session_state.trabajador['nacimiento'] = st.date_input("Nacimiento", value=date(1990,1,1), min_value=date(1940,1,1), max_value=date.today())
+        st.session_state.trabajador['nacimiento'] = st.date_input("Nacimiento", value=st.session_state.trabajador['nacimiento'], min_value=date(1940,1,1), max_value=datetime.now())
 
-st.title("HR Suite Enterprise V35")
+    st.divider()
+    uf_v, utm_v = obtener_indicadores()
+    st.metric("UF", fmt(uf_v).replace("$",""))
+    st.metric("UTM", fmt(utm_v))
+
+st.title("HR Suite Enterprise V36")
 st.markdown("**Sistema Integral de Gestión de Personas**")
 
-tabs = st.tabs(["📂 Carga Masiva", "💰 Calculadora", "📋 Perfil", "🧠 Análisis CV", "🚀 Carrera", "📜 Legal Hub", "📊 Indicadores"])
+tabs = st.tabs(["📂 Carga Masiva", "💰 Calculadora", "📋 Perfil Cargo", "🧠 Análisis CV", "🚀 Carrera", "📜 Legal Hub", "📊 Indicadores"])
 
-# TAB 1: CARGA MASIVA (EXCEL)
+# TAB 1: CARGA MASIVA (NUEVO: DESCARGA PLANTILLA)
 with tabs[0]:
     st.header("Procesamiento por Lotes")
-    st.info("Sube un Excel con columnas: TIPO_DOCUMENTO, NOMBRE, RUT, CARGO, SUELDO")
-    up_excel = st.file_uploader("Subir Nómina (.xlsx)", type="xlsx")
+    
+    # BOTÓN DESCARGA PLANTILLA
+    st.markdown("##### Paso 1: Descargar Plantilla")
+    excel_plantilla = generar_plantilla_excel()
+    st.download_button("⬇️ Descargar Excel Modelo (.xlsx)", excel_plantilla, "Plantilla_Carga_RRHH.xlsx", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
+    
+    st.markdown("##### Paso 2: Subir y Procesar")
+    up_excel = st.file_uploader("Subir Nómina Completa", type="xlsx")
     
     if up_excel:
         if not st.session_state.empresa['rut']:
-            st.warning("⚠️ Complete los Datos de Empresa en el menú lateral.")
-        elif st.button("PROCESAR LOTE"):
+            st.warning("⚠️ Complete los Datos de Empresa en el menú lateral antes de procesar.")
+        elif st.button("PROCESAR LOTE COMPLETO"):
             df = pd.read_excel(up_excel)
-            zip_data, errs = procesar_lote_excel(df, st.session_state.empresa)
-            st.success("Procesamiento completado.")
-            if errs: st.error(f"Errores: {len(errs)}")
-            st.download_button("⬇️ Descargar Todo (.ZIP)", zip_data, "documentos_rrhh.zip", "application/zip")
+            zip_data, errs = procesar_lote_masivo(df, st.session_state.empresa)
+            st.success(f"Procesamiento finalizado. {len(errs)} errores detectados.")
+            if errs: st.error("\n".join(errs))
+            st.download_button("⬇️ Descargar Documentos (.ZIP)", zip_data, "documentos_rrhh.zip", "application/zip")
 
 # TAB 2: CALCULADORA
 with tabs[1]:
     c1, c2 = st.columns(2)
     with c1:
-        liq = st.number_input("Líquido Objetivo", 1000000, step=50000)
+        liq = st.number_input("Líquido Objetivo ($)", value=1000000, step=50000, format="%d")
         mostrar_miles(liq)
-        col = st.number_input("Colación", 50000); mov = st.number_input("Movilización", 50000)
+        col = st.number_input("Colación", 50000, format="%d"); mov = st.number_input("Movilización", 50000, format="%d")
     with c2:
-        con = st.selectbox("Contrato", ["Indefinido", "Plazo Fijo", "Empresarial"])
+        con = st.selectbox("Contrato", ["Indefinido", "Plazo Fijo", "Sueldo Empresarial"])
         afp = st.selectbox("AFP", ["Capital", "Habitat", "Modelo", "Uno", "SIN AFP"])
         sal = st.selectbox("Salud", ["Fonasa (7%)", "Isapre (UF)"])
         plan = st.number_input("Plan UF", 0.0) if sal == "Isapre (UF)" else 0.0
 
-    if st.button("CALCULAR"):
-        res = calcular_nomina_reversa(liq, col, mov, con, afp, sal, plan, 39643.59, 69542.0, 529000)
+    if st.button("SIMULAR SUELDO"):
+        res = calcular_nomina_reversa(liq, col, mov, con, afp, sal, plan, uf_v, utm_v, 529000)
         if res:
             st.session_state.calculo_actual = res
             if res.get('Warning'): st.warning(res['Warning'])
@@ -439,10 +489,11 @@ with tabs[1]:
                 <div class="liq-header">LIQUIDACIÓN SIMULADA</div>
                 <div class="liq-row"><span>Sueldo Base:</span><span>{fmt(res['Sueldo Base'])}</span></div>
                 <div class="liq-row"><span>Gratificación:</span><span>{fmt(res['Gratificación'])}</span></div>
+                <div class="liq-row" style="background:#f0f0f0;"><span><b>TOTAL IMPONIBLE:</b></span><span><b>{fmt(res['Total Imponible'])}</b></span></div>
                 <div class="liq-row"><span>Colación/Mov.:</span><span>{fmt(res['No Imponibles'])}</span></div>
                 <br>
-                <div class="liq-row"><span>AFP / Salud / Cesantía:</span><span style="color:red">-{fmt(res['AFP']+res['Salud_Total']+res['AFC'])}</span></div>
-                <div class="liq-row"><span>Adicional Isapre:</span><span style="color:red">-{fmt(res['Adicional_Salud'])}</span></div>
+                <div class="liq-row"><span>AFP ({afp}):</span><span style="color:red">-{fmt(res['AFP'])}</span></div>
+                <div class="liq-row"><span>Salud Total:</span><span style="color:red">-{fmt(res['Salud_Total'])}</span></div>
                 <div class="liq-row"><span>Impuesto:</span><span style="color:red">-{fmt(res['Impuesto'])}</span></div>
                 <div class="liq-total">A PAGAR: {fmt(res['LÍQUIDO_FINAL'])}</div>
             </div>
@@ -451,26 +502,30 @@ with tabs[1]:
             if LIBRARIES_OK:
                 pdf = generar_pdf_liquidacion(res, st.session_state.empresa, st.session_state.trabajador)
                 st.download_button("⬇️ Descargar PDF", pdf, "liquidacion.pdf", "application/pdf")
+        else: st.error("Error matemático.")
 
 # TAB 3: PERFIL CARGO
 with tabs[2]:
     c1, c2 = st.columns(2)
-    cargo = c1.text_input("Cargo", "Jefe de Ventas")
-    rubro = c2.selectbox("Rubro", ["Minería", "Tecnología", "Retail", "Salud", "Construcción"])
+    cargo = c1.text_input("Cargo", placeholder="Ej: Jefe de Ventas")
+    rubro = c2.selectbox("Rubro", ["Minería", "Tecnología", "Retail", "Salud", "Construcción", "Banca"])
     
     if cargo:
-        perf = generar_perfil_word_style(cargo, rubro)
+        perf = generar_perfil_robusto(cargo, rubro)
         st.session_state.perfil_actual = perf
+        
         st.info(f"**Misión:** {perf['objetivo']}")
         
         c_a, c_b = st.columns(2)
         c_a.success("**Funciones:**\n" + "\n".join([f"- {x}" for x in perf['funciones']]))
         c_b.warning("**Requisitos:**\n" + "\n".join([f"- {x}" for x in perf['requisitos_obj']]))
-        st.write(f"**Físicos/Ambientales:** {perf['fisicos']}")
+        st.write(f"**Condiciones:** {', '.join(perf['condiciones'])}")
 
 # TAB 4: ANÁLISIS CV
 with tabs[3]:
-    if LIBRARIES_OK:
+    st.header("Análisis de Brechas")
+    if not LIBRARIES_OK: st.warning("Faltan librerías.")
+    else:
         up = st.file_uploader("Subir CV", type="pdf")
         if up and st.session_state.perfil_actual:
             if st.button("ANALIZAR"):
@@ -483,7 +538,8 @@ with tabs[3]:
 
 # TAB 5: CARRERA
 with tabs[4]:
-    if cargo:
+    st.header("Plan de Desarrollo")
+    if 'cargo' in locals() and cargo:
         plan = generar_plan_carrera(cargo, rubro)
         c1, c2, c3 = st.columns(3)
         c1.markdown("#### Corto Plazo"); c1.write("\n".join(plan['corto']))
@@ -492,21 +548,21 @@ with tabs[4]:
 
 # TAB 6: LEGAL HUB
 with tabs[5]:
-    tipo = st.radio("Documento", ["Contrato", "Finiquito", "Amonestación"], horizontal=True)
+    st.header("Generador Legal")
     
-    if tipo == "Contrato":
-        if st.session_state.calculo_actual:
-            if st.button("Generar Contrato"):
-                docx = crear_documento_word("Contrato", {"nombre": st.session_state.trabajador['nombre'], "cargo": cargo}, st.session_state.empresa)
-                st.download_button("Descargar", docx, "contrato.docx")
-        else: st.warning("Calcule sueldo primero")
+    if st.session_state.calculo_actual:
+        c1, c2 = st.columns(2)
+        fini = c1.date_input("Inicio Contrato", datetime.now())
+        tcon = c2.selectbox("Tipo Contrato", ["Indefinido", "Plazo Fijo", "Obra Faena"])
         
-    elif tipo == "Finiquito":
-        fi = st.date_input("Inicio", date(2020,1,1)); ft = st.date_input("Fin", date.today())
-        base = st.number_input("Base", 1000000); vac = st.number_input("Vacaciones", 0)
-        if st.button("Calcular Finiquito"):
-            res = calcular_finiquito(fi, ft, base, "Necesidades", vac)
-            st.write(res)
+        if st.session_state.empresa['rut']:
+            cond = {"cargo": cargo if cargo else "Trabajador", "tipo": tcon, "inicio": fini, "funciones": "Las del cargo"}
+            if st.button("GENERAR CONTRATO (.DOCX)"):
+                bio = crear_documento_word("CONTRATO", st.session_state.trabajador, st.session_state.empresa)
+                st.download_button("Descargar", bio.getvalue(), "contrato.docx")
+        else:
+            st.error("⚠️ Complete Datos Empresa en barra lateral.")
+    else: st.info("Calcule sueldo primero.")
 
 # TAB 7: INDICADORES
 with tabs[6]:
