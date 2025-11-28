@@ -5,5 +5,5 @@ plotly
 pdfplumber
 fpdf
 python-docx
-openpyxl
 xlsxwriter
+openpyxl
