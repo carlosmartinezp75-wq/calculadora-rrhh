@@ -1,9 +1,8 @@
-streamlit
-pandas
-requests
-plotly
-pdfplumber
-fpdf
-python-docx
-xlsxwriter
-openpyxl
+import streamlit as st
+import pandas as pd
+import io
+import zipfile
+import tempfile
+from datetime import datetime, date, timedelta
+from dateutil.relativedelta import relativedelta
+import json
