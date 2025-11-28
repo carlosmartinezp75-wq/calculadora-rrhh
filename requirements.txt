@@ -6,3 +6,4 @@ pdfplumber
 fpdf
 python-docx
 openpyxl
+xlsxwriter
