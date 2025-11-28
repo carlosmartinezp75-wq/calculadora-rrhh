@@ -1,1 +1,36 @@
-pip install streamlit pandas fpdf python-docx xlsxwriter python-dateutil pillow
+# Dependencias para HR Suite Pro
+# Instalar con: pip install -r requirements.txt
+
+# Core de Streamlit
+streamlit>=1.28.0
+
+# Manejo de datos
+pandas>=2.0.0
+numpy>=1.24.0
+
+# Generación de documentos PDF
+fpdf2>=2.6.0
+reportlab>=4.0.0
+
+# Generación de documentos Word (DOCX)
+python-docx>=0.8.11
+
+# Archivos Excel
+xlsxwriter>=3.1.0
+openpyxl>=3.1.0
+
+# Manejo de fechas
+python-dateutil>=2.8.0
+
+# Utilidades generales
+pillow>=10.0.0
+requests>=2.31.0
+
+# Bases de datos (opcional)
+# sqlite3  # Incluido en Python
+# sqlalchemy>=2.0.0
+
+# Visualizaciones adicionales (opcional)
+# plotly>=5.15.0
+# matplotlib>=3.7.0
+# seaborn>=0.12.0
