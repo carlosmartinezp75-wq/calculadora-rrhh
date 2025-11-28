@@ -5,13 +5,14 @@ import base64
 import os
 import io
 import zipfile
+import tempfile
 import random
 from datetime import datetime, date
 import plotly.graph_objects as go
 import plotly.express as px
 
 # =============================================================================
-# 0. VALIDACIÓN DE ENTORNO Y LIBRERÍAS
+# 0. VALIDACIÓN DE ENTORNO
 # =============================================================================
 try:
     import pdfplumber
@@ -19,33 +20,27 @@ try:
     from docx import Document
     from docx.shared import Pt, Inches, RGBColor
     from docx.enum.text import WD_ALIGN_PARAGRAPH
+    import xlsxwriter # Requerido para generar excel
     LIBRARIES_OK = True
 except ImportError:
     LIBRARIES_OK = False
 
 # =============================================================================
-# 1. CONFIGURACIÓN DEL SISTEMA
+# 1. CONFIGURACIÓN
 # =============================================================================
-st.set_page_config(
-    page_title="HR Suite Enterprise V37",
-    page_icon="🏢",
-    layout="wide",
-    initial_sidebar_state="expanded"
-)
+st.set_page_config(page_title="HR Suite Legal Core V38", page_icon="⚖️", layout="wide")
 
-# Inicialización de Estado (Persistencia de Datos)
-# Esto asegura que la app no falle si faltan datos
+# Estado Persistente
 if 'empresa' not in st.session_state:
     st.session_state.empresa = {
         "nombre": "", "rut": "", "direccion": "", 
         "rep_nombre": "", "rep_rut": "", "ciudad": "Santiago", "giro": "Servicios"
     }
 if 'calculo_actual' not in st.session_state: st.session_state.calculo_actual = None
-if 'perfil_actual' not in st.session_state: st.session_state.perfil_actual = None
-if 'logo_bytes' not in st.session_state: st.session_state.logo_bytes = None
+if 'finiquito_actual' not in st.session_state: st.session_state.finiquito_actual = None
 
 # =============================================================================
-# 2. ESTILOS VISUALES (CSS)
+# 2. ESTILOS VISUALES (UI PREMIUM)
 # =============================================================================
 def cargar_estilos():
     nombres = ['fondo.png', 'fondo.jpg', 'fondo_marca.png']
@@ -55,14 +50,7 @@ def cargar_estilos():
     if img:
         try:
             with open(img, "rb") as f: b64 = base64.b64encode(f.read()).decode()
-            css_fondo = f"""
-            [data-testid="stAppViewContainer"] {{
-                background-image: url("data:image/png;base64,{b64}");
-                background-size: cover;
-                background-position: center;
-                background-attachment: fixed;
-            }}
-            """
+            css_fondo = f"""[data-testid="stAppViewContainer"] {{background-image: url("data:image/png;base64,{b64}"); background-size: cover;}}"""
         except: pass
     else:
         css_fondo = """[data-testid="stAppViewContainer"] {background: linear-gradient(135deg, #fdfbfb 0%, #ebedee 100%);}"""
@@ -70,60 +58,31 @@ def cargar_estilos():
     st.markdown(f"""
         <style>
         {css_fondo}
-        .block-container {{
-            background-color: rgba(255, 255, 255, 0.98); 
-            padding: 2.5rem; 
-            border-radius: 15px; 
-            box-shadow: 0 10px 40px rgba(0,0,0,0.15);
-        }}
-        h1, h2, h3, h4 {{color: #004a99 !important; font-family: 'Segoe UI', sans-serif; font-weight: 800;}}
+        .block-container {{background-color: rgba(255, 255, 255, 0.98); padding: 2rem; border-radius: 15px; box-shadow: 0 10px 40px rgba(0,0,0,0.1);}}
+        h1, h2, h3 {{color: #004a99 !important; font-family: 'Segoe UI', sans-serif; font-weight: 800;}}
         
-        /* Botones */
+        /* Botones Acción */
         .stButton>button {{
-            background-color: #004a99 !important;
-            color: white !important;
-            font-weight: bold;
-            border-radius: 8px;
-            width: 100%;
-            height: 3rem;
-            text-transform: uppercase;
-            box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+            background-color: #004a99 !important; color: white !important; font-weight: bold; border-radius: 8px; width: 100%; height: 3rem;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.1); transition: all 0.3s;
         }}
-        .stButton>button:hover {{
-            background-color: #003366 !important;
-            transform: translateY(-2px);
-        }}
+        .stButton>button:hover {{background-color: #003366 !important; transform: translateY(-2px);}}
         
-        /* Cajas de Ayuda */
-        .help-box {{
-            background-color: #e3f2fd;
-            border-left: 5px solid #004a99;
-            padding: 15px;
-            margin-bottom: 20px;
-            border-radius: 5px;
-            font-size: 0.95rem;
-        }}
+        /* Cajas de Resultado */
+        .result-box {{border: 1px solid #ddd; padding: 20px; background: #fff; margin-bottom: 20px; border-radius: 8px;}}
+        .legal-header {{text-align: center; font-weight: bold; border-bottom: 2px solid #000; margin-bottom: 15px;}}
         
-        /* Liquidación Visual */
-        .liq-box {{
-            border: 1px solid #ccc; padding: 20px; background: #fff; font-family: 'Courier New', monospace;
-            box-shadow: 5px 5px 15px #eee; margin-top: 15px;
-        }}
-        .liq-row {{display: flex; justify-content: space-between; border-bottom: 1px dashed #ddd; padding: 4px 0;}}
-        .liq-total {{background: #e8f5e9; padding: 10px; font-weight: bold; font-size: 1.2em; border: 1px solid #2e7d32; margin-top: 20px; color: #1b5e20; text-align: right;}}
-        
-        .miles-feedback {{font-size: 0.8rem; color: #2e7d32; font-weight: bold; margin-top: -10px;}}
-        
-        #MainMenu, footer {{visibility: hidden;}}
+        /* Feedback Inputs */
+        .miles-feedback {{font-size: 0.8rem; color: #28a745; font-weight: bold; margin-top: -10px;}}
         </style>
         """, unsafe_allow_html=True)
 
 cargar_estilos()
 
 # =============================================================================
-# 3. FUNCIONES UTILITARIAS
+# 3. UTILIDADES Y DATA
 # =============================================================================
-def fmt(valor):
+def fmt(valor): 
     if pd.isna(valor) or valor == "": return "$0"
     try: return "${:,.0f}".format(float(valor)).replace(",", ".")
     except: return str(valor)
@@ -132,164 +91,23 @@ def mostrar_miles(valor):
     if valor > 0: st.markdown(f'<p class="miles-feedback">✅ Ingresaste: {fmt(valor)}</p>', unsafe_allow_html=True)
 
 def obtener_indicadores():
-    try:
-        r = requests.get('https://mindicador.cl/api', timeout=2)
-        d = r.json()
-        return float(d['uf']['valor']), float(d['utm']['valor'])
-    except: return 39643.59, 69542.0 # Fallback
+    # Valores Nov 2025 para estabilidad
+    return 39643.59, 69542.0
 
 # =============================================================================
-# 4. GENERADORES DE ARCHIVOS (MOTOR DOCUMENTAL)
-# =============================================================================
-
-def generar_plantilla_excel():
-    """Crea un Excel modelo para que el usuario sepa qué subir"""
-    df = pd.DataFrame(columns=[
-        "TIPO_DOCUMENTO", "NOMBRE_TRABAJADOR", "RUT_TRABAJADOR", "CARGO", 
-        "SUELDO_BASE", "FECHA_INICIO", "EMAIL"
-    ])
-    df.loc[0] = ["Contrato", "Juan Perez", "12.345.678-9", "Analista", 800000, "2025-01-01", "juan@mail.com"]
-    
-    buffer = io.BytesIO()
-    # Usamos ExcelWriter simple para máxima compatibilidad
-    with pd.ExcelWriter(buffer, engine='xlsxwriter') as writer:
-        df.to_excel(writer, index=False, sheet_name='Plantilla')
-    buffer.seek(0)
-    return buffer
-
-def crear_documento_word_masivo(tipo_doc, datos, empresa):
-    """Genera un DOCX individual basado en una fila de Excel"""
-    doc = Document()
-    style = doc.styles['Normal']; style.font.name = 'Arial'; style.font.size = Pt(11)
-    
-    # Encabezado
-    doc.add_heading(str(tipo_doc).upper(), 0).alignment = WD_ALIGN_PARAGRAPH.CENTER
-    doc.add_paragraph(f"Fecha: {datetime.now().strftime('%d/%m/%Y')}").alignment = WD_ALIGN_PARAGRAPH.RIGHT
-    
-    # Datos Seguros (Evita errores si la columna no existe)
-    def g(key): 
-        # Busca la columna ignorando mayúsculas
-        key_upper = key.upper()
-        for col in datos.index:
-            if str(col).upper() == key_upper:
-                return str(datos[col])
-        return "________________"
-
-    # Cuerpo
-    intro = f"""En {empresa.get('ciudad','Santiago')}, entre "{empresa.get('nombre','EMPRESA')}", RUT {empresa.get('rut','XX')}, y don/ña {g('NOMBRE_TRABAJADOR')}, RUT {g('RUT_TRABAJADOR')}, se acuerda:"""
-    doc.add_paragraph(intro)
-    
-    if "CONTRATO" in str(tipo_doc).upper():
-        doc.add_paragraph(f"1. CARGO: El trabajador se desempeñará como {g('CARGO')}.")
-        doc.add_paragraph(f"2. RENTA: Sueldo Base de {fmt(g('SUELDO_BASE'))} más gratificación legal.")
-        doc.add_paragraph(f"3. JORNADA: 44 Horas semanales.")
-    elif "FINIQUITO" in str(tipo_doc).upper():
-        doc.add_paragraph("1. CAUSAL: Se pone término a la relación laboral por necesidades de la empresa.")
-        doc.add_paragraph("2. PAGO: El trabajador recibe a entera conformidad sus haberes.")
-        
-    doc.add_paragraph("\n\n\n__________________\nFIRMA EMPLEADOR\n\n__________________\nFIRMA TRABAJADOR")
-    
-    bio = io.BytesIO()
-    doc.save(bio)
-    return bio
-
-def procesar_lote_masivo(df, empresa_data):
-    zip_buffer = io.BytesIO()
-    reporte = []
-    
-    with zipfile.ZipFile(zip_buffer, "w") as zf:
-        for idx, row in df.iterrows():
-            try:
-                tipo = str(row.get('TIPO_DOCUMENTO', 'Contrato'))
-                nombre = str(row.get('NOMBRE_TRABAJADOR', f'Trab_{idx}'))
-                
-                # Crear DOCX
-                docx = crear_documento_word_masivo(tipo, row, empresa_data)
-                
-                # Añadir al ZIP
-                clean_name = "".join([c for c in nombre if c.isalnum() or c==' ']).strip().replace(" ", "_")
-                zf.writestr(f"{tipo}_{clean_name}.docx", docx.getvalue())
-            except Exception as e:
-                reporte.append(f"Error Fila {idx}: {str(e)}")
-                
-    zip_buffer.seek(0)
-    return zip_buffer, reporte
-
-# =============================================================================
-# 5. MOTORES DE INTELIGENCIA DE NEGOCIO
-# =============================================================================
-
-def generar_perfil_robusto(cargo, rubro):
-    if not cargo: return None
-    
-    skills_map = {
-        "Tecnología": ["Cloud Computing (AWS/Azure)", "Scrum/Agile", "Python/SQL", "Cybersecurity"],
-        "Minería": ["Normativa Sernageomin", "Gestión de Activos", "Seguridad Industrial", "Lean Mining"],
-        "Retail": ["E-commerce", "Logística Última Milla", "Customer Experience", "Visual Merchandising"],
-        "Salud": ["Gestión Clínica", "Calidad Acreditación", "Bioestadística", "Normativa Minsal"],
-        "Construcción": ["Autocad/BIM", "Control de Costos", "Prevención de Riesgos", "Gestión de Obras"],
-        "Banca": ["Riesgo Financiero", "Compliance", "Normativa CMF", "Inversiones"]
-    }
-    
-    hard_skills = skills_map.get(rubro, ["Gestión de Proyectos", "Excel Avanzado", "ERP", "Inglés"])
-    
-    return {
-        "titulo": cargo.title(),
-        "objetivo": f"Dirigir y controlar las operaciones de {cargo} en el sector {rubro}, asegurando KPIs y normativa.",
-        "dependencia": "Gerencia General / Gerencia de Área",
-        "nivel": "Profesional Senior / Jefatura",
-        "funciones": [
-            "Planificación estratégica y operativa del área.",
-            "Control presupuestario (CAPEX/OPEX) y gestión de recursos.",
-            "Liderazgo de equipos multidisciplinarios.",
-            "Reportabilidad a Gerencia y stakeholders."
-        ],
-        "requisitos_duros": [
-            "Título Profesional Universitario.",
-            f"Experiencia mínima de 4-5 años en rubro {rubro}.",
-            "Manejo de ERP (SAP/Oracle) y Office Avanzado.",
-            f"Conocimientos: {', '.join(hard_skills[:2])}."
-        ],
-        "competencias": ["Liderazgo Transformacional", "Visión Estratégica", "Negociación", "Resiliencia"],
-        "condiciones": ["Jornada Art. 22", "Modalidad Híbrida/Presencial", "Seguro Complementario"]
-    }
-
-def motor_analisis_cv(texto, perfil):
-    # Análisis semántico simulado
-    kws = [k.lower() for k in perfil['competencias'] + perfil['requisitos_duros']]
-    txt = texto.lower()
-    
-    enc = list(set([k.title() for k in kws if k.split()[0] in txt]))
-    fal = list(set([k.title() for k in kws if k.split()[0] not in txt]))
-    
-    score = int((len(enc) / len(kws)) * 100) + random.randint(10, 20)
-    score = min(99, max(15, score))
-    nivel = "Senior" if score > 75 else "Semi-Senior" if score > 45 else "Junior"
-    
-    return score, enc, fal, nivel
-
-def leer_pdf(archivo):
-    if not LIBRARIES_OK: return None
-    try:
-        text = ""
-        with pdfplumber.open(archivo) as pdf:
-            for p in pdf.pages: text += (p.extract_text() or "")
-        return text
-    except: return None
-
-# =============================================================================
-# 6. CÁLCULO FINANCIERO
+# 4. MOTORES DE CÁLCULO (FINANCIERO Y LEGAL)
 # =============================================================================
 
 def calcular_nomina_reversa(liquido_obj, col, mov, contrato, afp_n, salud_t, plan_uf, uf, utm, s_min):
+    """Calcula Sueldo Base a partir del Líquido."""
     no_imp = col + mov
     liq_meta = liquido_obj - no_imp
     if liq_meta < s_min * 0.4: return None
     
     TOPE_GRAT = (4.75 * s_min) / 12
     tasa_afp = 0.0 if (contrato == "Sueldo Empresarial" or afp_n == "SIN AFP") else (0.10 + ({"Capital":1.44,"Habitat":1.27,"Modelo":0.58,"Uno":0.49}.get(afp_n,1.44)/100))
-    tasa_afc_emp = 0.024
-    tasa_afc_trab = 0.006 if contrato == "Indefinido" and contrato != "Sueldo Empresarial" else 0.0
+    tasa_afc_emp = 0.024 if contrato == "Indefinido" else 0.03
+    tasa_afc_trab = 0.006 if (contrato == "Indefinido" and contrato != "Sueldo Empresarial") else 0.0
     
     min_b, max_b = 100000, liq_meta * 2.5
     for _ in range(150):
@@ -299,27 +117,20 @@ def calcular_nomina_reversa(liquido_obj, col, mov, contrato, afp_n, salud_t, pla
         tot_imp = base + grat
         
         b_prev = min(tot_imp, 87.8*uf)
-        b_afc = min(tot_imp, 131.9*uf)
-        
         m_afp = int(b_prev * tasa_afp)
-        m_afc = int(b_afc * tasa_afc_trab)
-        
-        # Lógica Isapre Target (7%)
         legal_7 = int(b_prev * 0.07)
+        m_afc = int(min(tot_imp, 131.9*uf) * tasa_afc_trab)
+        
         base_trib = max(0, tot_imp - m_afp - legal_7 - m_afc)
-        
         imp = 0
-        if base_trib > 13.5*utm: imp = int(base_trib*0.04)
-        if base_trib > 30*utm: imp = int((base_trib*0.08) - (1.74*utm))
-        imp = max(0, imp)
+        if base_trib > 13.5*utm: imp = int(base_trib*0.04) # Simplificado
         
-        liq_calc_base = tot_imp - m_afp - legal_7 - m_afc - imp
+        liq_calc = tot_imp - m_afp - legal_7 - m_afc - imp
         
-        if abs(liq_calc_base - liq_meta) < 500:
+        if abs(liq_calc - liq_meta) < 500:
             salud_real = legal_7
             adicional = 0
             warning = None
-            
             if salud_t == "Isapre (UF)":
                 plan_pesos = int(plan_uf * uf)
                 if plan_pesos > legal_7:
@@ -328,207 +139,295 @@ def calcular_nomina_reversa(liquido_obj, col, mov, contrato, afp_n, salud_t, pla
                     warning = f"⚠️ Plan Isapre excede el 7%. Líquido baja en {fmt(adicional)}."
             
             liq_final = tot_imp - m_afp - salud_real - m_afc - imp + no_imp
-            ap_sis, ap_mut, ap_afc_e = int(b_prev*0.0149), int(b_prev*0.0093), int(b_afc*tasa_afc_emp)
+            ap_sis, ap_mut, ap_afc_e = int(b_prev*0.0149), int(b_prev*0.0093), int(min(tot_imp, 131.9*uf)*tasa_afc_emp)
             
             return {
                 "Sueldo Base": int(base), "Gratificación": int(grat), "Total Imponible": int(tot_imp),
-                "No Imponibles": int(no_imp), "LÍQUIDO": int(liq_final),
-                "AFP": m_afp, "Salud_Legal": legal_7, "Adicional_Salud": adicional, "Salud_Total": salud_real,
-                "AFC": m_afc, "Impuesto": imp,
-                "Aportes Empresa": ap_sis + ap_mut + ap_afc_e, "COSTO TOTAL": int(tot_imp+no_imp+ap_sis+ap_mut+ap_afc_e),
+                "No Imponibles": int(no_imp), "LÍQUIDO": int(liq_final), 
+                "AFP": m_afp, "Salud": salud_real, "AFC": m_afc, "Impuesto": imp,
+                "Aportes Empresa": ap_sis+ap_mut+ap_afc_e, "COSTO TOTAL": int(tot_imp+no_imp+ap_sis+ap_mut+ap_afc_e),
                 "Warning": warning
             }
             break
-        elif liq_calc_base < liq_meta: min_b = base
+        elif liq_calc < liq_meta: min_b = base
         else: max_b = base
     return None
 
+def calcular_finiquito_legal(f_ini, f_fin, sueldo_base, causal, vac_pend, uf):
+    """Calcula indemnización años de servicio y vacaciones."""
+    dias = (f_fin - f_ini).days
+    anos = int(dias / 365.25)
+    meses_extra = (dias % 365.25) / 30
+    
+    anos_pago = anos
+    if meses_extra >= 6: anos_pago += 1
+    if anos_pago > 11: anos_pago = 11 # Tope legal
+    
+    tope_indem = 90 * uf
+    base_calc = min(sueldo_base, tope_indem)
+    
+    m_anos = 0
+    m_aviso = 0
+    if causal == "Necesidades de la Empresa":
+        m_anos = int(base_calc * anos_pago)
+        # Asumimos aviso previo no dado (se paga)
+        m_aviso = int(base_calc)
+        
+    # Feriado Proporcional (Simplificado)
+    valor_dia = sueldo_base / 30
+    m_feriado = int(vac_pend * 1.25 * valor_dia)
+    
+    return {
+        "Años Servicio": m_anos,
+        "Aviso Previo": m_aviso,
+        "Vacaciones": m_feriado,
+        "TOTAL": m_anos + m_aviso + m_feriado,
+        "Antigüedad": f"{anos} años"
+    }
+
 # =============================================================================
-# 7. INTERFAZ GRÁFICA PRINCIPAL
+# 5. GENERADORES DOCUMENTALES (WORD/PDF/EXCEL)
 # =============================================================================
 
-# SIDEBAR: DATOS MAESTROS
+def generar_plantilla_excel():
+    df = pd.DataFrame(columns=[
+        "TIPO_DOCUMENTO", "NOMBRE", "RUT", "CARGO", "SUELDO_BASE", 
+        "FECHA_INICIO", "FECHA_TERMINO", "CAUSAL", "VACACIONES_PEND"
+    ])
+    df.loc[0] = ["Contrato", "Juan Perez", "12.345.678-9", "Analista", 800000, "2025-01-01", "", "", ""]
+    df.loc[1] = ["Finiquito", "Maria Soto", "9.876.543-2", "Vendedora", 600000, "2020-01-01", "2025-11-27", "Necesidades", 10]
+    
+    buffer = io.BytesIO()
+    with pd.ExcelWriter(buffer, engine='xlsxwriter') as writer:
+        df.to_excel(writer, index=False, sheet_name='Carga_Masiva')
+    buffer.seek(0)
+    return buffer
+
+def crear_docx_legal(tipo, datos, empresa):
+    doc = Document()
+    style = doc.styles['Normal']; style.font.name = 'Arial'; style.font.size = Pt(11)
+    fecha = datetime.now().strftime("%d de %B de %Y")
+    
+    doc.add_heading(str(tipo).upper(), 0).alignment = WD_ALIGN_PARAGRAPH.CENTER
+    doc.add_paragraph(f"En {empresa.get('ciudad','Santiago')}, a {fecha}").alignment = WD_ALIGN_PARAGRAPH.RIGHT
+    
+    # Recuperación segura de datos (Soporta Excel o Input Manual)
+    def g(k): return str(datos.get(k, "_____________"))
+    
+    intro = f"""
+    Entre la empresa "{empresa.get('nombre','EMPRESA')}", RUT {empresa.get('rut','XX')}, representada por {empresa.get('rep_nombre','REP')}, en adelante el EMPLEADOR; y don/ña {g('NOMBRE')}, RUT {g('RUT')}, en adelante el TRABAJADOR, se acuerda:
+    """
+    doc.add_paragraph(intro)
+    
+    if "CONTRATO" in str(tipo).upper():
+        clausulas = [
+            ("PRIMERO (Cargo):", f"El trabajador se desempeñará como {g('CARGO')}."),
+            ("SEGUNDO (Remuneración):", f"Sueldo Base: {fmt(g('SUELDO_BASE'))}. Gratificación Legal tope 4.75 IMM."),
+            ("TERCERO (Jornada):", "44 horas semanales (Ley 40 Horas)."),
+            ("CUARTO (Confidencialidad):", "El trabajador guardará secreto de la información sensible.")
+        ]
+        for t, x in clausulas: 
+            p = doc.add_paragraph(); p.add_run(t).bold=True; p.add_run(f" {x}")
+            
+    elif "FINIQUITO" in str(tipo).upper():
+        # Calcular si viene del Excel
+        try:
+            sueldo = float(datos.get('SUELDO_BASE', 0))
+            vac = float(datos.get('VACACIONES_PEND', 0))
+            # Simulación cálculo rápido para el documento masivo
+            total_txt = fmt(sueldo + (vac*1.25*(sueldo/30))) 
+        except: total_txt = "$0"
+        
+        doc.add_paragraph(f"1. CAUSAL: {g('CAUSAL')}.")
+        doc.add_paragraph(f"2. PAGO: El empleador paga la suma total de {total_txt}.")
+        doc.add_paragraph("3. DECLARACIÓN: El trabajador declara recibir a entera satisfacción el monto.")
+    
+    elif "AMONESTACION" in str(tipo).upper():
+        doc.add_paragraph("Por medio de la presente, se amonesta al trabajador por incumplimiento de sus obligaciones contractuales, específicamente:")
+        doc.add_paragraph(f"HECHOS: {g('HECHOS') if g('HECHOS')!='_____________' else 'Faltas reiteradas al reglamento interno.'}")
+        doc.add_paragraph("Se deja constancia en su carpeta personal.")
+
+    doc.add_paragraph("\n\n___________________\nFIRMA EMPLEADOR\n\n___________________\nFIRMA TRABAJADOR")
+    
+    bio = io.BytesIO()
+    doc.save(bio)
+    return bio
+
+def procesar_lote_masivo(df, empresa_data):
+    zip_buffer = io.BytesIO()
+    reporte = []
+    with zipfile.ZipFile(zip_buffer, "w") as zf:
+        for idx, row in df.iterrows():
+            try:
+                # Normalizar nombres de columnas (Upper case)
+                row = {k.upper(): v for k, v in row.items()}
+                tipo = row.get('TIPO_DOCUMENTO', 'Contrato')
+                nombre = row.get('NOMBRE', f'Trabajador_{idx}')
+                
+                docx = crear_docx_legal(tipo, row, empresa_data)
+                zf.writestr(f"{tipo}_{nombre}.docx", docx.getvalue())
+            except Exception as e:
+                reporte.append(f"Error Fila {idx}: {str(e)}")
+    zip_buffer.seek(0)
+    return zip_buffer, reporte
+
+def generar_pdf_liquidacion(res, emp, trab):
+    if not LIBRARIES_OK: return None
+    pdf = FPDF()
+    pdf.add_page()
+    pdf.set_font("Arial", 'B', 14); pdf.cell(0, 10, "LIQUIDACION DE SUELDO", 0, 1, 'C'); pdf.ln(10)
+    pdf.set_font("Arial", '', 10)
+    pdf.cell(0, 6, f"Empresa: {emp.get('nombre','S/N')}", 0, 1)
+    pdf.cell(0, 6, f"Trabajador: {trab.get('nombre','S/N')}", 0, 1)
+    pdf.ln(5)
+    # Tabla
+    h = [("Base", res['Sueldo Base']), ("Gratif.", res['Gratificación']), ("No Imp.", res['No Imponibles'])]
+    d = [("AFP", res['AFP']), ("Salud", res['Salud']), ("AFC", res['AFC']), ("Impuesto", res['Impuesto'])]
+    for i in range(max(len(h), len(d))):
+        t1, v1 = h[i] if i<len(h) else ("",""); t2, v2 = d[i] if i<len(d) else ("","")
+        pdf.cell(50,6,t1,1); pdf.cell(30,6,fmt(v1),1); pdf.cell(10,6,"",0); pdf.cell(50,6,t2,1); pdf.cell(30,6,fmt(v2),1,1)
+    pdf.ln(5); pdf.cell(0,10, f"LIQUIDO A PAGAR: {fmt(res['LÍQUIDO'])}", 1, 1, 'C')
+    return pdf.output(dest='S').encode('latin-1')
+
+# =============================================================================
+# 6. INTERFAZ DE USUARIO
+# =============================================================================
+
+# --- SIDEBAR (DATOS EMPRESA) ---
 with st.sidebar:
     st.image("https://www.previred.com/wp-content/uploads/2021/01/logo-previred.png", width=120)
     
-    with st.expander("🏢 1. Configuración Empresa", expanded=True):
-        st.caption("Estos datos son obligatorios para generar documentos legales.")
+    with st.expander("🏢 Datos Empresa (Obligatorio)", expanded=True):
         st.session_state.empresa['rut'] = st.text_input("RUT Empresa", st.session_state.empresa['rut'])
         st.session_state.empresa['nombre'] = st.text_input("Razón Social", st.session_state.empresa['nombre'])
         st.session_state.empresa['rep_nombre'] = st.text_input("Rep. Legal", st.session_state.empresa['rep_nombre'])
-        st.session_state.empresa['rep_rut'] = st.text_input("RUT Rep.", st.session_state.empresa['rep_rut'])
-        st.session_state.empresa['direccion'] = st.text_input("Dirección", st.session_state.empresa['direccion'])
-        st.session_state.empresa['ciudad'] = st.text_input("Ciudad", st.session_state.empresa['ciudad'])
-        st.session_state.empresa['giro'] = st.text_input("Giro", st.session_state.empresa['giro'])
+        st.session_state.empresa['ciudad'] = st.text_input("Ciudad Firma", st.session_state.empresa['ciudad'])
+        
+    st.info("Estos datos se usarán en todos los documentos generados.")
 
-    st.divider()
-    uf_v, utm_v = obtener_indicadores()
-    st.metric("UF", fmt(uf_v).replace("$",""))
-    st.metric("UTM", fmt(utm_v))
+st.title("HR Suite Legal Core V38")
+st.markdown("**Plataforma de Cálculo de Remuneraciones y Gestión Documental Legal**")
 
-st.title("HR Suite Enterprise V37")
-st.markdown("**Sistema Integral de Gestión de Personas y Contratos**")
+# --- NAVEGACIÓN PRINCIPAL ---
+tabs = st.tabs(["💰 Calculadora Sueldo", "📜 Legal Hub (Contratos/Finiquitos)", "🧠 Análisis CV & Perfil", "📊 Indicadores"])
 
-tabs = st.tabs(["📂 Carga Masiva", "💰 Calculadora", "📋 Perfil Cargo", "🧠 Análisis CV", "🚀 Carrera", "📜 Legal Hub", "📊 Indicadores"])
-
-# --- TAB 1: CARGA MASIVA ---
+# --- TAB 1: CALCULADORA ---
 with tabs[0]:
-    st.header("Procesamiento por Lotes")
-    
-    with st.expander("📘 Guía de Uso: Carga Masiva"):
-        st.markdown("""
-        **Función:** Generar múltiples contratos o finiquitos simultáneamente.
-        **Pasos:**
-        1. Descarga la plantilla Excel.
-        2. Llena los datos de tus trabajadores.
-        3. Sube el archivo y presiona 'Procesar'.
-        4. Descarga el archivo ZIP con todos los documentos listos.
-        """)
-    
-    # 1. Descarga Plantilla
-    excel_plantilla = generar_plantilla_excel()
-    st.download_button("⬇️ Descargar Plantilla Excel (.xlsx)", excel_plantilla, "Plantilla_Carga.xlsx")
-    
-    # 2. Subida y Proceso
-    st.markdown("---")
-    up_excel = st.file_uploader("Subir Nómina Completa", type="xlsx")
-    
-    if up_excel:
-        if not st.session_state.empresa['rut']:
-            st.warning("⚠️ Complete los Datos de Empresa en el menú lateral antes de procesar.")
-        elif st.button("PROCESAR LOTE COMPLETO"):
-            try:
-                df = pd.read_excel(up_excel)
-                zip_data, errs = procesar_lote_masivo(df, st.session_state.empresa)
-                st.success(f"Procesamiento finalizado. {len(errs)} errores detectados.")
-                if errs: st.error("\n".join(errs))
-                st.download_button("⬇️ Descargar Documentos (.ZIP)", zip_data, "documentos_rrhh.zip", "application/zip")
-            except Exception as e:
-                st.error(f"Error al leer el archivo: {e}")
-
-# --- TAB 2: CALCULADORA ---
-with tabs[1]:
-    with st.expander("📘 Guía de Uso: Calculadora"):
-        st.markdown("Calcula el sueldo bruto y costo empresa a partir de un **Líquido Objetivo**.")
+    with st.expander("📘 Guía: ¿Cómo calcular un sueldo?"):
+        st.write("Ingresa el monto líquido que deseas pagar. El sistema calculará el Bruto y el Costo Empresa.")
     
     c1, c2 = st.columns(2)
     with c1:
-        liq = st.number_input("Líquido Objetivo ($)", value=1000000, step=50000, format="%d")
+        liq = st.number_input("Líquido Objetivo", 1000000, step=50000)
         mostrar_miles(liq)
-        col = st.number_input("Colación", 50000, format="%d"); mov = st.number_input("Movilización", 50000, format="%d")
+        col = st.number_input("Colación", 50000); mov = st.number_input("Movilización", 50000)
     with c2:
-        con = st.selectbox("Contrato", ["Indefinido", "Plazo Fijo", "Sueldo Empresarial"])
+        con = st.selectbox("Contrato", ["Indefinido", "Plazo Fijo", "Empresarial"])
         afp = st.selectbox("AFP", ["Capital", "Habitat", "Modelo", "Uno", "SIN AFP"])
         sal = st.selectbox("Salud", ["Fonasa (7%)", "Isapre (UF)"])
         plan = st.number_input("Plan UF", 0.0) if sal == "Isapre (UF)" else 0.0
 
-    if st.button("CALCULAR"):
-        res = calcular_nomina_reversa(liq, col, mov, con, afp, sal, plan, uf_v, utm_v, 529000)
+    if st.button("CALCULAR NÓMINA"):
+        res = calcular_nomina_reversa(liq, col, mov, con, afp, sal, plan, 39643.59, 69542.0, 529000)
         if res:
             st.session_state.calculo_actual = res
             if res.get('Warning'): st.warning(res['Warning'])
             
             k1, k2, k3 = st.columns(3)
             k1.metric("Sueldo Base", fmt(res['Sueldo Base']))
-            k2.metric("Líquido", fmt(res['LÍQUIDO_FINAL']))
-            k3.metric("Costo Empresa", fmt(res['COSTO TOTAL']))
+            k2.metric("Líquido Final", fmt(res['LÍQUIDO']))
+            k3.metric("Costo Empresa", fmt(res['COSTO TOTAL']), delta="Total", delta_color="inverse")
             
             st.markdown(f"""
-            <div class="liq-box">
-                <div class="liq-header">LIQUIDACIÓN SIMULADA</div>
-                <div class="liq-row"><span>Sueldo Base:</span><span>{fmt(res['Sueldo Base'])}</span></div>
+            <div class="result-box">
+                <div class="legal-header">LIQUIDACIÓN SIMULADA</div>
+                <div class="liq-row"><span>Base:</span><span>{fmt(res['Sueldo Base'])}</span></div>
                 <div class="liq-row"><span>Gratificación:</span><span>{fmt(res['Gratificación'])}</span></div>
-                <div class="liq-row" style="background:#f0f0f0;"><span><b>TOTAL IMPONIBLE:</b></span><span><b>{fmt(res['Total Imponible'])}</b></span></div>
                 <div class="liq-row"><span>No Imponibles:</span><span>{fmt(res['No Imponibles'])}</span></div>
-                <br>
-                <div class="liq-row"><span>AFP ({afp}):</span><span style="color:red">-{fmt(res['AFP'])}</span></div>
-                <div class="liq-row"><span>Salud Total:</span><span style="color:red">-{fmt(res['Salud_Total'])}</span></div>
-                <div class="liq-row"><span>Impuesto:</span><span style="color:red">-{fmt(res['Impuesto'])}</span></div>
-                <div class="liq-total">A PAGAR: {fmt(res['LÍQUIDO_FINAL'])}</div>
+                <hr>
+                <div class="liq-row"><span>Descuentos Legales:</span><span style="color:red">-{fmt(res['Total Descuentos'])}</span></div>
+                <div class="liq-total">A PAGAR: {fmt(res['LÍQUIDO'])}</div>
             </div>
             """, unsafe_allow_html=True)
-
-# --- TAB 3: PERFIL CARGO ---
-with tabs[2]:
-    with st.expander("📘 Guía de Uso: Perfiles"):
-        st.markdown("Genera descripciones de cargo profesionales basadas en competencias por industria.")
-        
-    c1, c2 = st.columns(2)
-    cargo = c1.text_input("Cargo", placeholder="Ej: Jefe de Ventas")
-    rubro = c2.selectbox("Rubro", ["Minería", "Tecnología", "Retail", "Salud", "Construcción", "Banca"])
-    
-    if cargo:
-        st.session_state.cargo_actual = cargo
-        st.session_state.rubro_actual = rubro
-        perf = generar_perfil_robusto(cargo, rubro)
-        st.session_state.perfil_actual = perf
-        
-        st.info(f"**Misión:** {perf['objetivo']}")
-        
-        c_a, c_b = st.columns(2)
-        c_a.success("**Funciones:**\n" + "\n".join([f"- {x}" for x in perf['funciones']]))
-        c_b.warning("**Requisitos:**\n" + "\n".join([f"- {x}" for x in perf['requisitos_duros']]))
-        st.write(f"**Competencias:** {', '.join(perf['competencias'])}")
-
-# --- TAB 4: ANÁLISIS CV ---
-with tabs[3]:
-    with st.expander("📘 Guía de Uso: Análisis CV"):
-        st.markdown("Sube un CV en PDF. El sistema comparará las competencias del candidato contra el Perfil generado en la Pestaña 3.")
-        
-    if not LIBRARIES_OK: st.warning("Faltan librerías.")
-    else:
-        up = st.file_uploader("Subir CV", type="pdf")
-        if up and st.session_state.perfil_actual:
-            if st.button("ANALIZAR"):
-                txt = leer_pdf(up)
-                if txt:
-                    an = motor_analisis_cv(txt, st.session_state.perfil_actual)
-                    st.metric("Score de Ajuste", f"{an['score']}%")
-                    st.info(f"Nivel Detectado: **{an['nivel']}**")
-                    st.success(f"✅ Fortalezas: {', '.join(an['encontradas'])}")
-                    st.error(f"⚠️ Brechas: {', '.join(an['faltantes'])}")
-        elif not st.session_state.perfil_actual:
-            st.warning("⚠️ Primero genera un perfil en la Pestaña 3.")
-
-# --- TAB 5: CARRERA ---
-with tabs[4]:
-    with st.expander("📘 Guía de Uso: Carrera"):
-        st.markdown("Muestra un plan de desarrollo profesional sugerido.")
-    
-    if st.session_state.cargo_actual:
-        plan = generar_plan_carrera(st.session_state.cargo_actual, st.session_state.rubro_actual)
-        c1, c2, c3 = st.columns(3)
-        c1.markdown("#### Corto Plazo"); c1.write("\n".join(plan['corto']))
-        c2.markdown("#### Mediano Plazo"); c2.write("\n".join(plan['mediano']))
-        c3.markdown("#### Largo Plazo"); c3.write("\n".join(plan['largo']))
-    else: st.info("Defina un cargo primero.")
-
-# --- TAB 6: LEGAL HUB ---
-with tabs[5]:
-    with st.expander("📘 Guía de Uso: Documentos Legales"):
-        st.markdown("Genera contratos individuales o finiquitos. Requiere datos de empresa.")
-        
-    tipo = st.radio("Documento", ["Contrato de Trabajo", "Finiquito"], horizontal=True)
-    
-    if tipo == "Contrato de Trabajo":
-        if st.session_state.calculo_actual and st.session_state.empresa['rut']:
-            # Formulario rápido para datos faltantes del trabajador
-            col_a, col_b = st.columns(2)
-            nombre = col_a.text_input("Nombre Trabajador")
-            rut = col_b.text_input("RUT Trabajador")
             
-            if st.button("GENERAR CONTRATO"):
-                # Crear diccionario temporal uniendo datos
-                datos_fila = {
-                    "NOMBRE_TRABAJADOR": nombre, "RUT_TRABAJADOR": rut, 
-                    "CARGO": st.session_state.cargo_actual,
-                    "SUELDO": st.session_state.calculo_actual['Sueldo Base']
-                }
-                docx = crear_documento_word_masivo("Contrato", datos_fila, st.session_state.empresa)
-                st.download_button("Descargar Contrato", docx, "contrato.docx")
-        else: st.warning("Calcule sueldo en Pestaña 2 y complete Datos Empresa.")
+            if LIBRARIES_OK:
+                pdf = generar_pdf_liquidacion(res, st.session_state.empresa, st.session_state.trabajador)
+                st.download_button("⬇️ Descargar Liquidación (PDF)", pdf, "liquidacion.pdf", "application/pdf")
 
-# --- TAB 7: INDICADORES ---
-with tabs[6]:
-    st.header("Indicadores Previred")
-    st.info(f"UF: {fmt(uf_v)} | UTM: {fmt(utm_v)} | Sueldo Mín: $529.000")
+# --- TAB 2: LEGAL HUB (MASIVO E INDIVIDUAL) ---
+with tabs[1]:
+    st.header("Centro de Documentación Legal")
+    modo = st.radio("Seleccione Modo:", ["👤 Individual (Manual)", "📂 Masivo (Excel)"], horizontal=True)
+    
+    if modo == "👤 Individual (Manual)":
+        doc_type = st.selectbox("Tipo Documento", ["Contrato de Trabajo", "Finiquito Laboral", "Carta Amonestación"])
+        
+        with st.form("doc_form"):
+            c1, c2 = st.columns(2)
+            nom = c1.text_input("Nombre Trabajador")
+            rut = c2.text_input("RUT Trabajador")
+            cargo = c1.text_input("Cargo")
+            
+            if doc_type == "Finiquito Laboral":
+                st.markdown("---")
+                st.markdown("**Cálculo de Indemnizaciones**")
+                fi = c1.date_input("Inicio Relación", date(2022,1,1))
+                ft = c2.date_input("Término Relación", date.today())
+                base = st.number_input("Sueldo Base", 900000)
+                vac = st.number_input("Vacaciones Pendientes", 0.0)
+                causal = st.selectbox("Causal", ["Renuncia Voluntaria", "Necesidades de la Empresa"])
+            
+            sub = st.form_submit_button("GENERAR DOCUMENTO")
+            
+            if sub:
+                if not st.session_state.empresa['rut']:
+                    st.error("⚠️ Complete los Datos de Empresa en el menú lateral.")
+                else:
+                    if doc_type == "Finiquito Laboral":
+                        fin_calc = calcular_finiquito_legal(fi, ft, base, causal, vac, 39643.59)
+                        st.success(f"Cálculo Finiquito: {fmt(fin_calc['TOTAL'])}")
+                        # Preparamos datos para el docx
+                        datos = {"NOMBRE": nom, "RUT": rut, "CAUSAL": causal, "TOTAL": fin_calc['TOTAL']}
+                        docx = crear_documento_word_masivo("FINIQUITO", datos, st.session_state.empresa)
+                        st.download_button("Descargar Finiquito (.docx)", docx, "finiquito.docx")
+                    else:
+                        # Contrato / Amonestación
+                        sueldo_txt = fmt(st.session_state.calculo_actual['Sueldo Base']) if st.session_state.calculo_actual else "$0"
+                        datos = {"NOMBRE": nom, "RUT": rut, "CARGO": cargo, "SUELDO_BASE": sueldo_txt}
+                        docx = crear_documento_word_masivo(doc_type.split()[0].upper(), datos, st.session_state.empresa)
+                        st.download_button("Descargar Documento (.docx)", docx, f"{doc_type}.docx")
+
+    elif modo == "📂 Masivo (Excel)":
+        with st.expander("📘 Instrucciones Carga Masiva"):
+            st.write("1. Descargue la plantilla Excel.")
+            st.write("2. Llene las filas con los trabajadores (Contrato, Finiquito, etc).")
+            st.write("3. Suba el archivo y presione Procesar.")
+        
+        # 1. Bajar Plantilla
+        plantilla = generar_plantilla_excel()
+        st.download_button("1. Descargar Plantilla Excel", plantilla, "plantilla_rrhh.xlsx")
+        
+        # 2. Subir y Procesar
+        up_file = st.file_uploader("2. Subir Excel Completo", type="xlsx")
+        if up_file and st.button("PROCESAR Y GENERAR ZIP"):
+            if not st.session_state.empresa['rut']:
+                st.error("⚠️ Falta RUT Empresa en barra lateral.")
+            else:
+                try:
+                    df = pd.read_excel(up_file)
+                    zip_file, log = procesar_lote_masivo(df, st.session_state.empresa)
+                    st.success("Procesamiento finalizado.")
+                    if log: st.warning(f"Advertencias: {log}")
+                    st.download_button("⬇️ DESCARGAR ZIP CON DOCUMENTOS", zip_file, "documentos_legales.zip", "application/zip")
+                except Exception as e:
+                    st.error(f"Error crítico: {e}")
+
+# --- TAB 3: TALENTO (CV & PERFIL) ---
+with tabs[2]:
+    st.info("Módulo de Análisis de CV y Perfiles (Requiere librerías PDF).")
+    # (Aquí va el código de análisis CV de versiones anteriores si se desea activar)
+
+# --- TAB 4: INDICADORES ---
+with tabs[3]:
+    st.header("Indicadores Oficiales")
+    st.table(pd.DataFrame({"Indicador": ["UF", "UTM", "Sueldo Mínimo"], "Valor": [fmt(39643.59), fmt(69542), fmt(529000)]}))
